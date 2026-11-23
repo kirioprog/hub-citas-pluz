@@ -62,7 +62,7 @@ Otras demostraciones:
 
 ## Mapa y optimización de rutas con grafos
 
-**Mapa real.** Los mapas usan Leaflet con los mosaicos de OpenStreetMap. Muestran los límites reales de Santa Anita, Ate y La Molina, la ruta con flechas de sentido, las paradas numeradas con su hora estimada de llegada, los puntos A y B, la capa de tráfico y las rutas alternativas. Las citas, bases y sedes están ubicadas en calles reales; la numeración de las viviendas y las personas son ficticias. Hay mapas en:
+**Mapa real estilo Google Maps.** Los mapas usan Leaflet con un mapa base vectorial de OpenFreeMap (dibujado con MapLibre), sin clave de API. Tienen un botón **Mapa / Satélite** (imágenes de Esri con los nombres de las calles), una ruta azul con chevrones de sentido, alternativas en gris, pines rojos en forma de gota con la hora de llegada, colores de tráfico verde, naranja y rojo, y los límites reales de Santa Anita, Ate y La Molina. Si el navegador no tiene WebGL o el mapa vectorial no carga, se usan los mosaicos de OpenStreetMap. Las citas, bases y sedes están ubicadas en calles reales; la numeración de las viviendas y las personas son ficticias. No se usan los mapas de Google, porque exigen una clave de API con facturación. Hay mapas en:
 
 - **Contratista > Rutas**: mapa grande con pantalla completa, botón **Simular recorrido** (el motorizado avanza por las calles con el reloj de la ruta), vista de **una cuadrilla** o de **todas las cuadrillas** del día, comparación de caminos por tramo e indicaciones giro a giro.
 - **Técnico > Mapa** y **Cómo llegar**: su ruta del día, la simulación y las indicaciones a la siguiente visita.
@@ -98,6 +98,7 @@ js/store.js        estado compartido, reglas y flujo de WhatsApp
 js/ui.js           íconos SVG y utilidades
 js/map.js          mapas interactivos con Leaflet y animación del motorizado
 vendor/leaflet/    Leaflet 1.9.4 (licencia BSD-2)
+vendor/maplibre/   MapLibre GL JS 4.7.1 y puente para Leaflet (licencias BSD-3 e ISC)
 tools/build_graph.py  genera geo-data.js desde OpenStreetMap
 js/app.js          render, eventos, inicio de sesión y estructura
 js/pluz.js         vista de Pluz

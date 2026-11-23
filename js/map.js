@@ -6,12 +6,78 @@
   const H = window.Hub, D = H.data, R = H.routing, U = H.ui;
   const L = window.L;
   const N = D.nodes, E = D.edges;
-  const LV = { fluido: '#2E8B57', moderado: '#D98E04', denso: '#C62828' };
-  const ALT = ['#0F766E', '#6D4FC2', '#C2410C'];
-  const CREW_COLORS = ['#0F766E', '#6D4FC2', '#C2410C'];
+  // Colores al estilo Google Maps: tráfico verde/naranja/rojo, ruta azul, alternativas grises.
+  const LV = { fluido: '#1E9E4A', moderado: '#F29900', denso: '#E3342F' };
+  const BLUE = '#1A73E8', BLUE_DARK = '#1557B0', GREY = '#9AA0A6', GREY_DARK = '#70757A';
+  const ALT = [BLUE, GREY, GREY];
+  const altColor = (i, sel) => (i === sel ? BLUE : GREY);
+  const CREW_COLORS = ['#1A73E8', '#9334E6', '#E8710A'];
   const ZONE_LABEL = { 'Santa Anita': [-12.0545, -76.9855], 'Ate': [-12.0195, -76.9555], 'La Molina': [-12.0975, -76.9235] };
   const TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   const ATTR = 'Mapa y calles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores de OpenStreetMap</a>';
+  const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+  const ATTR_VEC = '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> · Datos © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores de OpenStreetMap</a>';
+  const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+  const ATTR_SAT = 'Imágenes © Esri, Maxar, Earthstar Geographics · Calles © colaboradores de OpenStreetMap';
+  let BASE = 'mapa';
+  const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+
+  /* Mapa base: vectorial tipo Google (OpenFreeMap + MapLibre); si no hay WebGL o no carga, OpenStreetMap.
+   * Satélite: imágenes de Esri con nombres de calles encima (como la vista híbrida). */
+  function osmLayer(map, div) {
+    const tiles = L.tileLayer(TILE, { maxZoom: 19, attribution: ATTR });
+    tiles.once('tileerror', () => {
+      if (!map.getPane('basePane')) map.createPane('basePane').style.zIndex = 250;
+      const r = L.canvas({ padding: 0.3, pane: 'basePane' }), base = L.layerGroup();
+      E.forEach((e) => L.polyline(edgeCoords(e), { renderer: r, color: e.cls <= 2 ? '#B9BDB5' : '#D6D8D2', weight: e.cls <= 1 ? 4 : e.cls <= 2 ? 3 : 1.5, interactive: false }).addTo(base));
+      base.addTo(map); base.eachLayer((l) => l.bringToBack && l.bringToBack());
+      div.classList.add('no-tiles');
+    });
+    return tiles;
+  }
+  function makeBases(map, div) {
+    let mapa;
+    if (webgl && window.maplibregl && L.maplibreGL) {
+      mapa = L.maplibreGL({ style: STYLE, attribution: ATTR_VEC, interactive: false });
+      // Si el estilo no carga en 8 s, se cambia a los mosaicos de OpenStreetMap.
+      setTimeout(() => {
+        try {
+          const gl = mapa.getMaplibreMap && mapa.getMaplibreMap();
+          if (gl && !gl.isStyleLoaded() && map.hasLayer(mapa)) { map.removeLayer(mapa); en(map).bases.mapa = osmLayer(map, div).addTo(map); }
+        } catch (e) { /* sin cambios */ }
+      }, 8000);
+    } else {
+      mapa = osmLayer(map, div);
+    }
+    const satelite = L.layerGroup([
+      L.tileLayer(ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: ATTR_SAT }),
+      L.tileLayer(ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, opacity: 0.9 }),
+      L.tileLayer(ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
+    ]);
+    return { mapa, satelite };
+  }
+  const en = (map) => Object.values(entries).find((x) => x.map === map);
+  function setBase(b) {
+    BASE = b;
+    Object.values(entries).forEach((x) => {
+      for (const [k, layer] of Object.entries(x.bases)) {
+        if (k === b && !x.map.hasLayer(layer)) layer.addTo(x.map);
+        if (k !== b && x.map.hasLayer(layer)) x.map.removeLayer(layer);
+      }
+      x.div.classList.toggle('is-sat', b === 'satelite');
+      x.div.querySelectorAll('.base-switch button').forEach((btn) => { btn.classList.toggle('is-on', btn.dataset.base === b); btn.setAttribute('aria-pressed', btn.dataset.base === b); });
+    });
+  }
+  const BaseSwitch = L ? L.Control.extend({
+    options: { position: 'bottomleft' },
+    onAdd() {
+      const d = L.DomUtil.create('div', 'base-switch');
+      d.innerHTML = ['mapa', 'satelite'].map((k) => `<button type="button" data-base="${k}" class="${BASE === k ? 'is-on' : ''}" aria-pressed="${BASE === k}"><span class="bs-thumb bs-${k}"></span>${k === 'mapa' ? 'Mapa' : 'Satélite'}</button>`).join('');
+      L.DomEvent.disableClickPropagation(d);
+      d.addEventListener('click', (e) => { const b = e.target.closest('[data-base]'); if (b) setBase(b.dataset.base); });
+      return d;
+    }
+  }) : null;
 
   const entries = {}, pending = {};
   const ll = (i) => [N[i].lat, N[i].lng];
@@ -33,17 +99,15 @@
         const div = document.createElement('div');
         div.className = 'lmap-inner';
         ph.appendChild(div);
-        const map = L.map(div, { preferCanvas: true, scrollWheelZoom: spec.wheel !== false, zoomSnap: 0.5 }).setView([-12.058, -76.945], 13);
-        const tiles = L.tileLayer(TILE, { maxZoom: 19, attribution: ATTR }).addTo(map);
-        // Sin conexión a los mosaicos: se dibuja la red vial propia como mapa base.
-        tiles.once('tileerror', () => {
-          const r = L.canvas({ padding: 0.3 }), base = L.layerGroup();
-          E.forEach((e) => L.polyline(edgeCoords(e), { renderer: r, color: e.cls <= 2 ? '#B9BDB5' : '#D6D8D2', weight: e.cls <= 1 ? 4 : e.cls <= 2 ? 3 : 1.5, interactive: false }).addTo(base));
-          base.addTo(map); base.eachLayer((l) => l.bringToBack && l.bringToBack());
-          div.classList.add('no-tiles');
-        });
-        L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
-        en = entries[key] = { div, map, layer: L.layerGroup().addTo(map), sig: null };
+        const map = L.map(div, { preferCanvas: true, scrollWheelZoom: spec.wheel !== false, zoomSnap: 0.5, zoomControl: false }).setView([-12.058, -76.945], 13);
+        L.control.zoom({ position: 'bottomright', zoomInTitle: 'Acercar', zoomOutTitle: 'Alejar' }).addTo(map);
+        L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+        en = entries[key] = { div, map, layer: null, sig: null, bases: {} };
+        en.bases = makeBases(map, div);
+        en.bases[BASE].addTo(map);
+        div.classList.toggle('is-sat', BASE === 'satelite');
+        if (spec.switcher !== false) new BaseSwitch().addTo(map);
+        en.layer = L.layerGroup().addTo(map);
       } else {
         ph.appendChild(en.div);
       }
@@ -72,24 +136,23 @@
   }
   function edgeCoords(e) { return [ll(e.a)].concat(e.geom, [ll(e.b)]); }
   function traffic(ctx, t, cond) {
-    const r = L.canvas({ padding: 0.3 });
     E.forEach((e) => {
       if (e.cls > 2) return;
       const lv = R.edgeLevel(e, t, cond).key;
-      L.polyline(edgeCoords(e), { renderer: r, color: LV[lv], weight: e.cls === 0 ? 4 : e.cls === 1 ? 3.5 : 2.5, opacity: 0.55, interactive: false }).addTo(ctx.layer);
+      L.polyline(edgeCoords(e), { color: LV[lv], weight: e.cls === 0 ? 4 : e.cls === 1 ? 3.5 : 2.5, opacity: 0.55, interactive: false }).addTo(ctx.layer);
     });
   }
 
   const dist = (p, q) => { const k = Math.cos((p[0] * Math.PI) / 180); return Math.hypot((q[0] - p[0]) * 111.32, (q[1] - p[1]) * 111.32 * k); };
   const bearing = (p, q) => (Math.atan2((q[1] - p[1]) * Math.cos((p[0] * Math.PI) / 180), q[0] - p[0]) * 180) / Math.PI;
-  function arrows(ctx, coords, color, every = 0.45) {
+  function arrows(ctx, coords, color, every = 0.6) {
     let acc = every / 2;
     for (let i = 1; i < coords.length; i++) {
       const d = dist(coords[i - 1], coords[i]);
       while (acc <= d) {
         const f = acc / d, p = [coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * f, coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * f];
         const b = bearing(coords[i - 1], coords[i]);
-        L.marker(p, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'arrow-ic', iconSize: [14, 14], html: `<svg viewBox="0 0 14 14" style="transform:rotate(${b}deg)"><path d="M7 1 12 12 7 9 2 12z" fill="${color}" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>` }) }).addTo(ctx.layer);
+        L.marker(p, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'arrow-ic', iconSize: [14, 14], html: `<svg viewBox="0 0 14 14" style="transform:rotate(${b}deg)"><path d="M3 10 7 5l4 5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>` }) }).addTo(ctx.layer);
         acc += every;
       }
       acc -= d;
@@ -97,8 +160,9 @@
   }
   function line(ctx, coords, color, o = {}) {
     if (coords.length < 2) return;
-    L.polyline(coords, { color: '#fff', weight: (o.weight || 6) + 4, opacity: o.opacity ?? 1, interactive: false, lineJoin: 'round' }).addTo(ctx.layer);
-    const pl = L.polyline(coords, { color, weight: o.weight || 6, opacity: o.opacity ?? 1, dashArray: o.dash || null, lineJoin: 'round' }).addTo(ctx.layer);
+    const casing = o.casing || (color === BLUE ? BLUE_DARK : color === GREY ? GREY_DARK : '#ffffff');
+    L.polyline(coords, { color: casing, weight: (o.weight || 6) + 3, opacity: o.opacity ?? 1, interactive: false, lineJoin: 'round', lineCap: 'round' }).addTo(ctx.layer);
+    const pl = L.polyline(coords, { color, weight: o.weight || 6, opacity: o.opacity ?? 1, dashArray: o.dash || null, lineJoin: 'round', lineCap: 'round' }).addTo(ctx.layer);
     if (o.tip) pl.bindTooltip(o.tip, { sticky: true });
     if (o.onClick) pl.on('click', o.onClick);
     if (o.fit !== false) coords.forEach((c) => ctx.bounds.extend(c));
@@ -106,16 +170,20 @@
     return pl;
   }
   function pin(ctx, latlng, html, cls, o = {}) {
-    const m = L.marker(latlng, { icon: L.divIcon({ className: 'pin-wrap', html: `<div class="pin ${cls}">${html}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: o.z || 0, keyboard: !!o.popup, title: o.title || '' }).addTo(ctx.layer);
+    const drop = / pin-(stop|status|b)\b/.test(' ' + cls);
+    const icon = drop
+      ? L.divIcon({ className: 'pin-wrap', html: `<div class="gpin ${cls}"><span>${html}</span></div>`, iconSize: [34, 44], iconAnchor: [17, 42], popupAnchor: [0, -38], tooltipAnchor: [12, -24] })
+      : L.divIcon({ className: 'pin-wrap', html: `<div class="pin ${cls}">${html}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] });
+    const m = L.marker(latlng, { icon, zIndexOffset: o.z || 0, keyboard: !!o.popup, title: o.title || '' }).addTo(ctx.layer);
     if (o.popup) m.bindPopup(o.popup, { maxWidth: 260 });
-    if (o.tip) m.bindTooltip(o.tip, { permanent: true, direction: 'right', offset: [16, 0], className: 'pin-tip' });
+    if (o.tip) m.bindTooltip(o.tip, { permanent: true, direction: 'right', offset: drop ? [6, 0] : [16, 0], className: 'pin-tip' });
     ctx.bounds.extend(latlng);
     return m;
   }
 
   /* Ruta optimizada completa */
   function route(ctx, o, res, cond, x = {}) {
-    const color = x.color || '#0F766E';
+    const color = x.color || BLUE;
     const legs = res.legs.map((l) => ({ from: l.from, to: l.stop.n, t: l.depart, a: l.depart, b: l.arrive, label: 'Hacia ' + l.stop.label }))
       .concat([{ from: res.endLeg.from, to: res.endLeg.to, t: res.endLeg.depart, a: res.endLeg.depart, b: res.endLeg.arrive, label: 'Regreso al punto B' }]);
     const tl = { t0: o.depart, t1: res.finish, segs: [], stays: [] };
@@ -142,9 +210,9 @@
 
   /* Rutas alternativas entre dos puntos */
   function alts(ctx, list, sel, onSel) {
-    list.forEach((p, i) => { if (i !== sel) line(ctx, p.coords, ALT[i % 3], { weight: 5, opacity: 0.85, dash: '9 8', tip: `${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min`, onClick: onSel ? () => onSel(i) : null }); });
+    list.forEach((p, i) => { if (i !== sel) line(ctx, p.coords, GREY, { weight: 6, opacity: 0.95, tip: `${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min`, onClick: onSel ? () => onSel(i) : null }); });
     const p = list[sel];
-    if (p) line(ctx, p.coords, ALT[sel % 3], { weight: 8, arrows: true, tip: `${sel === 0 ? 'Recomendada' : 'Alternativa ' + sel} · ${Math.round(p.minutes)} min` });
+    if (p) line(ctx, p.coords, BLUE, { weight: 8, arrows: true, tip: `${sel === 0 ? 'Recomendada' : 'Alternativa ' + sel} · ${Math.round(p.minutes)} min` });
   }
 
   /* ---------- Animación del motorizado ---------- */
@@ -189,12 +257,12 @@
   function legend(o = {}) {
     return `<div class="map-legend" aria-label="Leyenda del mapa">
       ${o.traffic !== false ? `<span><i class="lg-line" style="background:${LV.fluido}"></i>Tráfico fluido</span><span><i class="lg-line" style="background:${LV.moderado}"></i>Moderado</span><span><i class="lg-line" style="background:${LV.denso}"></i>Denso</span>` : ''}
-      ${o.crews ? o.crews.map((c, i) => `<span><i class="lg-line lg-thick" style="background:${CREW_COLORS[i]}"></i>${c}</span>`).join('') : '<span><i class="lg-line lg-thick" style="background:#0F766E"></i>Ruta optimizada (con flechas de sentido)</span>'}
+      ${o.crews ? o.crews.map((c, i) => `<span><i class="lg-line lg-thick" style="background:${CREW_COLORS[i]}"></i>${c}</span>`).join('') : '<span><i class="lg-line lg-thick lg-route"></i>Ruta optimizada (con flechas de sentido)</span>'}
       ${o.alt ? '<span><i class="lg-line lg-alt"></i>Ruta alternativa</span>' : ''}
-      <span><i class="lg-pin">1</i>Parada y hora de llegada</span><span><i class="lg-box">A</i>Salida</span><span><i class="lg-box lg-b">B</i>Llegada</span>
+      <span><i class="lg-pin"></i>Parada y hora de llegada</span><span><i class="lg-box">A</i>Salida</span><span><i class="lg-box lg-b">B</i>Llegada</span>
       <span><i class="lg-zone"></i>Límite de distrito</span>
     </div>`;
   }
 
-  H.map = { slot, mountAll, districts, traffic, route, alts, line, pin, animate, invalidate, legend, ALT, CREW_COLORS, ll, ready: !!L };
+  H.map = { slot, mountAll, districts, traffic, route, alts, line, pin, animate, invalidate, legend, ALT, altColor, CREW_COLORS, ll, setBase, ready: !!L };
 })();

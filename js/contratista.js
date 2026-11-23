@@ -229,7 +229,7 @@
         ${focus ? `<div class="map-head"><h2 class="card-title">${icon('layers')}Tramo ${L.leg + 1}: rutas para el mismo destino</h2>${btn('Cerrar', 'labLeg', { data: { i: L.leg }, cls: 'btn-ghost btn-sm', icon: 'x' })}</div>
           <p class="muted small">De ${esc(placeName(focus.from) || (opt.legs[L.leg - 1] ? opt.legs[L.leg - 1].stop.label : 'la parada anterior'))} a ${esc(focus.name)}, saliendo a las ${st.hm(focus.depart)}. Se comparan caminos distintos con el tráfico de esa hora y se elige el más rápido.</p>
           <div class="alt-list">${alts.map((p, i) => `<button class="alt ${L.alt === i ? 'is-on' : ''}" data-act="labAlt" data-i="${i}" aria-pressed="${L.alt === i}">
-            <span class="alt-swatch" style="background:${H.map.ALT[i % 3]}" aria-hidden="true"></span>
+            <span class="alt-swatch" style="background:${H.map.altColor(i, L.alt)}" aria-hidden="true"></span>
             <span class="alt-main"><strong>${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min</strong><span class="small">${p.km.toFixed(1)} km · por ${esc(p.via.join(' y '))}</span></span>
             <span class="alt-side">${lvTag(p.level)}${i ? `<span class="small muted">+${Math.round(p.minutes - alts[0].minutes)} min</span>` : ''}</span></button>`).join('')}</div>
           ${dirs ? `<h3 class="sub-title">${icon('nav')}Indicaciones · ${L.alt === 0 ? 'recomendada' : 'alternativa ' + L.alt}</h3><ol class="dirs">${dirs.map((d) => `<li>${icon(d.icon)}<span>${esc(d.text)}</span>${d.m ? `<span class="muted small">${d.m >= 1000 ? (d.m / 1000).toFixed(1) + ' km' : Math.round(d.m / 10) * 10 + ' m'}</span>` : ''}</li>`).join('')}</ol>` : ''}`
