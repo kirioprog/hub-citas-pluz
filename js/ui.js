@@ -107,5 +107,15 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), tone === 'error' ? 6000 : 4000);
   }
 
-  H.ui = { TONE, esc, icon, chip, tag, dateLong, dateShort, dayLabel, stamp, hm, initials, btn, select, field, banner, brand, empty, remainingText, toast, cap, attrs };
+  /* Etiqueta de cómo se asignó la cuadrilla */
+  function assignTag(a) {
+    const m = a.assign && a.assign.mode;
+    if (!a.date || ['Pendiente de contacto', 'Franja ofrecida', 'Cancelada'].includes(a.status)) return '';
+    if (m === 'zona') return tag('Su zona', 'green');
+    if (m === 'apoyo') return `<span class="tag tag-amber" title="${esc(a.assign.reason)}">Apoyo · zona de Cuadrilla ${esc(a.assign.home)}: ${esc((a.assign.reason || '').toLowerCase())}</span>`;
+    if (m === 'manual') return tag('Manual', 'gray');
+    if (m === 'sin') return `<span class="tag tag-red" title="${esc(a.assign.reason)}">Sin cuadrilla disponible</span>`;
+    return '';
+  }
+  H.ui = { assignTag, TONE, esc, icon, chip, tag, dateLong, dateShort, dayLabel, stamp, hm, initials, btn, select, field, banner, brand, empty, remainingText, toast, cap, attrs };
 })();

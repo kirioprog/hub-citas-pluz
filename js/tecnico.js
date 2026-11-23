@@ -18,7 +18,7 @@
           <div class="tech-top">${U.brand('Espacio técnico')}${btn('Cambiar de rol', 'switchRole', { cls: 'btn-ghost btn-sm', icon: 'switch' })}</div>
           <h1>Ruta de hoy</h1>
           <p class="tech-date">${U.cap(U.dateLong(D.today))} · <strong>${r.legs.length} ${r.legs.length === 1 ? 'visita' : 'visitas'}</strong>${r.legs.length ? ` · ${pending} por atender` : ''}</p>
-          <label class="tech-crew"><span class="small">Cuadrilla</span>${select('techCrew', ['A', 'B'].flatMap((c) => D.CREWS.map((n) => [c + '-' + n, D.CONTRACTORS[c] + ' · Cuadrilla ' + n])), T.contractor + '-' + T.crew, { id: 'tech-crew', label: 'Cuadrilla' })}</label>
+          <label class="tech-crew"><span class="small">Cuadrilla</span>${select('techCrew', ['A', 'B'].flatMap((c) => D.CREWS.map((n) => [c + '-' + n, D.CONTRACTORS[c] + ' · Cuadrilla ' + n + ' · ' + st.zoneName(c, n)])), T.contractor + '-' + T.crew, { id: 'tech-crew', label: 'Cuadrilla' })}</label>
           ${open ? '' : `<div class="seg" role="tablist" aria-label="Vista"><button role="tab" class="seg-btn ${T.tab === 'lista' ? 'is-on' : ''}" aria-selected="${T.tab === 'lista'}" data-act="techTab" data-tab="lista">${icon('list')}Lista</button><button role="tab" class="seg-btn ${T.tab === 'mapa' ? 'is-on' : ''}" aria-selected="${T.tab === 'mapa'}" data-act="techTab" data-tab="mapa">${icon('map')}Mapa</button></div>`}
         </header>
         <main id="main" class="tech-body" tabindex="-1">${body}</main>

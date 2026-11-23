@@ -45,6 +45,14 @@
   const CONTRACTORS = { A: 'Contratista A', B: 'Contratista B' };
   const CREWS = ['1', '2', '3'];
   const CREW_SLOT_CAPACITY = 2; // visitas por cuadrilla y franja
+  const CREW_DAY_CAPACITY = 5; // visitas por cuadrilla y día
+  const SUPPORT_KM = 5; // una cuadrilla vecina apoya si su zona está a 5 km o menos de la visita
+  const SUPPORT_DETOUR = 20; // y si el desvío que le causa no supera 20 minutos
+  /* Zona de trabajo de cada cuadrilla (centro del sector que atiende). */
+  const CREW_ZONES = {
+    A: { 1: { name: 'Santa Anita Oeste', center: [-12.0440, -76.9760] }, 2: { name: 'Santa Anita Este', center: [-12.0400, -76.9520] }, 3: { name: 'Ate Vitarte', center: [-12.0330, -76.9220] } },
+    B: { 1: { name: 'La Molina Norte', center: [-12.0740, -76.9380] }, 2: { name: 'La Molina Sur', center: [-12.0900, -76.9250] }, 3: { name: 'Ate Sur · Mayorazgo', center: [-12.0580, -76.9480] } }
+  };
 
   /* ---------- Red vial real (OpenStreetMap) ----------
    * js/geo-data.js contiene las intersecciones y tramos reales de Santa Anita, Ate y La Molina
@@ -163,7 +171,7 @@
 
   H.data = {
     today, addDays, dow, diffDays, nextWorkday, slotsFor, slotWindow, SLOTS, STATUSES, ZONES,
-    CONTRACTORS, CREWS, CREW_SLOT_CAPACITY, nodes, edges, adj, CLASSES, INCIDENTS, PLACES,
+    CONTRACTORS, CREWS, CREW_SLOT_CAPACITY, CREW_DAY_CAPACITY, SUPPORT_KM, SUPPORT_DETOUR, CREW_ZONES, nodes, edges, adj, CLASSES, INCIDENTS, PLACES,
     ADDRESS_BOOK, LAB, SEED, snap, decode, districts: Object.fromEntries(Object.entries(GEO.districts).map(([k, v]) => [k, decode(v)])), source: GEO.source
   };
 })();

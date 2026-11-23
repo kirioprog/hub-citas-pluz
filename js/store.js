@@ -93,34 +93,86 @@
    * otras visitas. Día 4 (excepción): además debe existir una ruta ya programada ese día,
    * la franja debe caer dentro del recorrido y el desvío no puede superar 25 minutos. */
   const MAX_DETOUR_DAY4 = 25;
+  /* Cuadrillas ordenadas por cercanía de su zona a la visita: la primera es la de su zona. */
+  const kmBetween = (p, q) => { const k = Math.cos((p[0] * Math.PI) / 180); return Math.hypot((q[0] - p[0]) * 111.32, (q[1] - p[1]) * 111.32 * k); };
+  st.crewPlan = (a, contractor = a.contractor) => {
+    const n = D.nodes[a.node], here = [n.lat, n.lng];
+    return D.CREWS.map((c) => ({ crew: c, zone: D.CREW_ZONES[contractor][c], km: kmBetween(here, D.CREW_ZONES[contractor][c].center) })).sort((x, y) => x.km - y.km);
+  };
+  st.homeCrew = (a, contractor = a.contractor) => st.crewPlan(a, contractor)[0];
+  st.zoneName = (contractor, crew) => (D.CREW_ZONES[contractor][crew] || {}).name || '';
+
+  function tryCrew(a, contractor, crew, date, slot, o) {
+    const dayFour = st.dayN(a, date) === 4, win = D.slotWindow(slot);
+    const stops = st.crewStops(contractor, crew, date, a.id);
+    if (stops.filter((s) => s.slot === slot).length >= D.CREW_SLOT_CAPACITY) return { ok: false, reason: 'Franja llena' };
+    if (stops.length >= D.CREW_DAY_CAPACITY) return { ok: false, reason: 'Cuadrilla llena (' + D.CREW_DAY_CAPACITY + ' visitas ese día)' };
+    if (dayFour && !stops.length) return { ok: false, reason: 'Sin ruta programada ese día' };
+    const base = R.optimize(stops, o);
+    const withNew = R.optimize(stops.concat([toStop(a, slot)]), o);
+    const mine = withNew.legs.find((l) => l.stop.id === a.id);
+    if (mine.late > 0) return { ok: false, reason: 'El técnico llegaría fuera de la franja' };
+    if (withNew.late > base.late + 0.01) return { ok: false, reason: 'Retrasaría otras visitas de la ruta' };
+    const detour = Math.max(0, withNew.travel - base.travel);
+    if (dayFour) {
+      const spanStart = Math.min(...base.legs.map((l) => l.stop.win[0]));
+      const spanEnd = Math.max(...base.legs.map((l) => l.finish));
+      if (!(win[0] < spanEnd && win[1] > spanStart)) return { ok: false, reason: 'Afecta la ruta: fuera del recorrido programado' };
+      if (detour > MAX_DETOUR_DAY4) return { ok: false, reason: 'Afecta la ruta: desvío de ' + Math.round(detour) + ' min' };
+    }
+    return { ok: true, crew, contractor, detour, eta: mine.arrive, start: mine.start, dayFour };
+  }
+
+  /* ¿Cabe la cita en esa fecha y franja?
+   * 1. Se intenta con la cuadrilla de su zona.
+   * 2. Si está llena o no llega a tiempo, apoya la cuadrilla vecina más conveniente, solo si su
+   *    zona está a SUPPORT_KM o menos y el desvío no supera SUPPORT_DETOUR minutos.
+   * Días 1 a 3: cupo en la franja y llegada a tiempo sin retrasar a nadie. Día 4 (excepción):
+   * además debe existir una ruta ese día, la franja debe caer dentro del recorrido y el desvío
+   * no puede superar 25 minutos. */
   st.fit = function (a, date, slot, opts = {}) {
     const contractor = opts.contractor || a.contractor;
-    const fixedCrew = opts.crew || a.crew;
-    const crews = fixedCrew ? [fixedCrew] : D.CREWS;
-    const dayFour = st.dayN(a, date) === 4;
     const o = st.options(contractor);
-    const win = D.slotWindow(slot);
-    let best = null; const reasons = [];
-    for (const crew of crews) {
-      const stops = st.crewStops(contractor, crew, date, a.id);
-      if (stops.filter((s) => s.slot === slot).length >= D.CREW_SLOT_CAPACITY) { reasons.push('Franja llena'); continue; }
-      if (dayFour && !stops.length) { reasons.push('Sin ruta programada ese día'); continue; }
-      const base = R.optimize(stops, o);
-      const withNew = R.optimize(stops.concat([toStop(a, slot)]), o);
-      const mine = withNew.legs.find((l) => l.stop.id === a.id);
-      if (mine.late > 0) { reasons.push('El técnico llegaría fuera de la franja'); continue; }
-      if (withNew.late > base.late + 0.01) { reasons.push('Retrasaría otras visitas de la ruta'); continue; }
-      const detour = Math.max(0, withNew.travel - base.travel);
-      if (dayFour) {
-        const spanStart = Math.min(...base.legs.map((l) => l.stop.win[0]));
-        const spanEnd = Math.max(...base.legs.map((l) => l.finish));
-        if (!(win[0] < spanEnd && win[1] > spanStart)) { reasons.push('Afecta la ruta: fuera del recorrido programado'); continue; }
-        if (detour > MAX_DETOUR_DAY4) { reasons.push('Afecta la ruta: desvío de ' + Math.round(detour) + ' min'); continue; }
-      }
-      const cand = { ok: true, crew, contractor, detour, eta: mine.arrive, start: mine.start, dayFour, assigned: !!fixedCrew };
-      if (!best || cand.detour < best.detour) best = cand;
+    const plan = st.crewPlan(a, contractor), home = plan[0];
+    const dayFour = st.dayN(a, date) === 4;
+    if (opts.crew) {
+      const r = tryCrew(a, contractor, opts.crew, date, slot, o);
+      return Object.assign(r, { dayFour, home: home.crew, role: opts.crew === home.crew ? 'zona' : 'apoyo' });
     }
-    return best || { ok: false, reason: reasons[0] || 'No disponible', dayFour };
+    const h = tryCrew(a, contractor, home.crew, date, slot, o);
+    if (h.ok) return Object.assign(h, { role: 'zona', home: home.crew });
+    let best = null;
+    for (const p of plan.slice(1)) {
+      if (p.km > D.SUPPORT_KM) continue;
+      const r = tryCrew(a, contractor, p.crew, date, slot, o);
+      if (r.ok && r.detour <= D.SUPPORT_DETOUR && (!best || r.detour < best.detour)) best = Object.assign(r, { role: 'apoyo', home: home.crew, homeReason: h.reason, km: p.km });
+    }
+    if (best) return best;
+    return { ok: false, dayFour, home: home.crew, reason: h.reason + (plan.length > 1 ? ' en su zona y ninguna cuadrilla vecina puede apoyar sin alejarse' : '') };
+  };
+
+  /* Asignación automática de cuadrilla por zona (con apoyo de la vecina si está llena). */
+  st.autoAssign = function (a, quiet) {
+    if (!a.date || !a.slot) return null;
+    const f = st.fit(a, a.date, a.slot);
+    const zone = (c) => 'Cuadrilla ' + c + ' (' + st.zoneName(a.contractor, c) + ')';
+    if (f.ok) {
+      const changed = a.crew !== f.crew;
+      a.crew = f.crew;
+      a.assign = { mode: f.role, home: f.home, detour: f.detour, reason: f.homeReason || '' };
+      if (changed && !quiet) {
+        const text = f.role === 'zona'
+          ? 'Asignada automáticamente a ' + zone(f.crew) + ' por zona'
+          : 'Asignada automáticamente a ' + zone(f.crew) + ' como apoyo: ' + zone(f.home) + ' — ' + f.homeReason.toLowerCase() + ' · +' + Math.round(f.detour) + ' min de ruta';
+        log(a, 'asignacion', text, 'Sistema', 'asignacion');
+      }
+    } else {
+      const had = a.crew;
+      a.crew = null;
+      a.assign = { mode: 'sin', home: f.home, reason: f.reason };
+      if (!quiet) log(a, 'asignacion', 'Sin cuadrilla disponible: ' + zone(f.home) + ' — ' + f.reason.toLowerCase() + '. Requiere reprogramar.', 'Sistema', had || true ? 'asignacion' : null);
+    }
+    return f;
   };
 
   /* Días permitidos: del día 1 al 3 desde la solicitud, y el día 4 solo si cabe en una ruta. */
@@ -182,6 +234,7 @@
     a.status = 'Confirmada'; a.needsConfirm = false;
     chat(a, 'pluz', MSG.confirmado(a), { link: true });
     log(a, 'confirmo', 'Cliente confirmó la visita · ' + fd(a.date) + ' · ' + a.slot + ' (vía ' + via + ')', 'Cliente', 'confirmacion');
+    st.autoAssign(a);
     emit();
   };
 
@@ -214,6 +267,7 @@
       chat(a, 'pluz', MSG.reprogramado(a), { link: true });
       log(a, 'reprogramada', 'Cliente reprogramó: ' + prev + ' → ' + fd(date) + ' · ' + slot + (f.dayFour ? ' (día 4, cabe en la ruta)' : '') + ' (vía ' + via + ')', 'Cliente', 'reprogramacion');
     }
+    st.autoAssign(a);
     emit();
   };
 
@@ -227,6 +281,7 @@
     a.needsConfirm = false;
     chat(a, 'pluz', MSG.representanteOk(a), { link: true });
     log(a, 'representante', 'Cliente registró representante: ' + a.representative + (wasNew ? ' · visita confirmada' : ''), 'Cliente', 'confirmacion');
+    if (!a.crew) st.autoAssign(a);
     emit();
   };
 
@@ -246,6 +301,7 @@
     a.date = date; a.slot = slot; a.status = 'Reprogramada'; a.arrived = false; a.needsConfirm = true;
     chat(a, 'pluz', MSG.reprogramadoPluz(a), { quick: true });
     log(a, 'reprogramada', 'Pluz reprogramó: ' + prev + ' → ' + fd(date) + ' · ' + slot + (f.dayFour ? ' (día 4, cabe en la ruta)' : ''), 'Pluz', 'reprogramacion');
+    st.autoAssign(a);
     emit();
   };
 
@@ -258,6 +314,7 @@
     if (!f.ok) throw new Error('No se reprograma: ' + f.reason.toLowerCase() + '.');
     const prev = a.date ? fd(a.date) + ' · ' + a.slot + (a.crew ? ' · Cuadrilla ' + a.crew : '') : 'sin fecha';
     a.crew = crew; a.date = date; a.slot = slot; a.status = 'Reprogramada'; a.arrived = false; a.needsConfirm = true;
+    a.assign = { mode: f.role === 'zona' ? 'zona' : 'manual', home: f.home, detour: f.detour };
     chat(a, 'pluz', MSG.reprogramadoPluz(a), { quick: true });
     log(a, 'reprogramada', 'Contratista reprogramó: ' + prev + ' → ' + fd(date) + ' · ' + slot + ' · Cuadrilla ' + crew + (f.dayFour ? ' (día 4, cabe en la ruta)' : '') + ' · +' + Math.round(f.detour) + ' min de ruta', D.CONTRACTORS[a.contractor], 'reprogramacion');
     emit();
@@ -298,12 +355,19 @@
 
   A.assignCrew = function (id, crew) {
     const a = find(id);
+    if (crew === 'auto') {
+      const f = st.autoAssign(a, true);
+      log(a, 'asignacion', f && f.ok ? 'Asignación automática restablecida: Cuadrilla ' + a.crew + ' (' + st.zoneName(a.contractor, a.crew) + (f.role === 'apoyo' ? ', apoyo' : '') + ')' : 'Asignación automática: sin cuadrilla disponible', D.CONTRACTORS[a.contractor], 'asignacion');
+      emit();
+      return f;
+    }
     if (crew && a.date && a.slot) {
       const taken = st.crewStops(a.contractor, crew, a.date, a.id).filter((s) => s.slot === a.slot).length;
       if (taken >= D.CREW_SLOT_CAPACITY) throw new Error('La Cuadrilla ' + crew + ' ya tiene ' + taken + ' visitas en ' + a.slot + '.');
     }
     a.crew = crew || null;
-    log(a, 'asignacion', crew ? 'Asignada a Cuadrilla ' + crew + ' (' + D.CONTRACTORS[a.contractor] + ')' : 'Cuadrilla desasignada', D.CONTRACTORS[a.contractor], 'asignacion');
+    a.assign = { mode: crew ? 'manual' : 'sin', home: st.homeCrew(a).crew, reason: crew ? '' : 'Desasignada por el contratista' };
+    log(a, 'asignacion', crew ? 'Asignación manual a Cuadrilla ' + crew + ' (' + st.zoneName(a.contractor, crew) + ')' : 'Cuadrilla desasignada', D.CONTRACTORS[a.contractor], 'asignacion');
     emit();
   };
 
@@ -354,6 +418,7 @@
       log(a, 'whatsapp', 'WhatsApp enviado con el enlace personal', 'Pluz', null);
       log(a, 'confirmo', 'Cliente confirmó en línea · ' + fd(a.date) + ' · ' + a.slot + ' (agendamiento rápido)', 'Cliente', 'confirmacion');
       chat(a, 'pluz', MSG.confirmado(a), { link: true });
+      st.autoAssign(a);
     } else {
       a.status = 'Franja ofrecida'; a.needsConfirm = true;
       chat(a, 'pluz', MSG.oferta(a), { quick: true });
@@ -372,7 +437,7 @@
       tmp.contractor = c;
       for (const d of st.allowedDates(tmp, false)) for (const slot of D.slotsFor(d.date)) {
         const fit = st.fit(tmp, d.date, slot, { contractor: c });
-        if (fit.ok) out.push({ contractor: c, date: d.date, slot, crew: fit.crew, detour: fit.detour, n: d.n });
+        if (fit.ok) out.push({ contractor: c, date: d.date, slot, crew: fit.crew, role: fit.role, detour: fit.detour, n: d.n });
       }
     }
     out.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : x.detour - y.detour));
@@ -416,7 +481,6 @@
         a.chat.push({ from: 'cliente', text: 'Ya no necesito la visita, gracias.', at: lima(requested, '11:00') });
         a.chat.push({ from: 'pluz', text: MSG.cancelada(), at: lima(requested, '11:01') });
       }
-      if (crew) h('asignacion', 'Asignada a Cuadrilla ' + crew + ' (' + D.CONTRACTORS[contractor] + ')', D.CONTRACTORS[contractor], requested, '16:00');
       if (status === 'Recordada') {
         h('recordatorio', 'Recordatorio de visita enviado', 'Pluz', a.date, '07:00');
         a.chat.push({ from: 'pluz', text: MSG.recordatorio(a), at: lima(a.date, '07:00') });
@@ -442,6 +506,17 @@
       }
       st.appts.push(a);
     });
+    // Asignación automática por zona de todas las citas agendadas (las ya atendidas primero).
+    const ORDER = ['Realizada', 'Cliente ausente', 'En camino'];
+    const scheduled = st.appts.filter((a) => a.date && a.slot && ['Confirmada', 'Recordada', 'Reprogramada', 'En camino', 'Realizada', 'Cliente ausente'].includes(a.status));
+    scheduled.forEach((a) => { a.crew = null; });
+    scheduled.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : (ORDER.includes(y.status) - ORDER.includes(x.status)) || (x.slot < y.slot ? -1 : x.slot > y.slot ? 1 : 0)))
+      .forEach((a) => {
+        const f = st.autoAssign(a, true);
+        const z = (c) => 'Cuadrilla ' + c + ' (' + st.zoneName(a.contractor, c) + ')';
+        const text = f && f.ok ? (f.role === 'zona' ? 'Asignada automáticamente a ' + z(f.crew) + ' por zona' : 'Asignada automáticamente a ' + z(f.crew) + ' como apoyo: ' + z(f.home) + ' — ' + f.homeReason.toLowerCase() + ' · +' + Math.round(f.detour) + ' min de ruta') : 'Sin cuadrilla disponible: ' + (f ? f.reason : '');
+        a.history.push({ kind: 'asignacion', text, actor: 'Sistema', at: lima(a.requested, '16:00') });
+      });
     // Cambios recientes ya vistos por el contratista (sin marca "Nuevo").
     const seedChanges = [
       ['FT-2026-1043', 'campo', 'Técnico en camino · llegada estimada 10:15', 'Técnico · Cuadrilla 2'],

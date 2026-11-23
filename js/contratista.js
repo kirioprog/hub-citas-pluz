@@ -40,7 +40,7 @@
     const list = mine().filter((a) => a.date === day && a.status !== 'Pendiente de contacto' && (!S.agendaZone || a.zone === S.agendaZone));
     const unassigned = list.filter((a) => !a.crew && !LOCKED.includes(a.status)).length;
     const slots = D.slotsFor(day);
-    return head('Agenda', `${D.CONTRACTORS[S.contractor]} · lunes a viernes 8:00–18:00, sábado 8:00–14:00.`,
+    return head('Agenda', `${D.CONTRACTORS[S.contractor]} · lunes a viernes 8:00–18:00, sábado 8:00–14:00. La cuadrilla se asigna sola por zona; si está llena, apoya la vecina sin alejarse. Puedes cambiarla manualmente.`,
       btn('Exportar a Excel', 'exportExcel', { cls: 'btn-ghost', icon: 'download' })) +
       dayTabs('agendaDay', day) + `
     <div class="toolbar">
@@ -58,7 +58,7 @@
             <tbody>${inSlot.filter((a) => a.zone === z).map((a) => `<tr>
               <td class="nowrap">${a.slot}</td><td>${a.zone}</td><td>${esc(a.address)}</td><td><strong>${esc(a.name)}</strong>${a.representative ? `<br><span class="muted small">Representante: ${esc(a.representative)}</span>` : ''}</td>
               <td class="mono nowrap">${esc(a.phone)}</td><td>${chip(a.status)}</td>
-              <td>${select('assign', [['', 'Sin asignar'], ['1', 'Cuadrilla 1'], ['2', 'Cuadrilla 2'], ['3', 'Cuadrilla 3']], a.crew || '', { id: 'crew-' + a.id, data: { id: a.id }, label: 'Cuadrilla para ' + a.name, disabled: LOCKED.includes(a.status) })}</td>
+              <td class="assign-cell">${select('assign', [['', 'Sin asignar'], ['auto', 'Asignar automáticamente']].concat(D.CREWS.map((c) => [c, 'Cuadrilla ' + c + ' · ' + st.zoneName(S.contractor, c)])), a.crew || '', { id: 'crew-' + a.id, data: { id: a.id }, label: 'Cuadrilla para ' + a.name, disabled: LOCKED.includes(a.status) })}<div>${U.assignTag(a)}</div></td>
             </tr>`).join('')}</tbody></table></div>`).join('')}
       </section>`;
     }).join('')}
@@ -66,7 +66,11 @@
   }
   H.act.agendaDay = (d) => { S.agendaDay = d.date; };
   H.change.agendaZone = (v) => { S.agendaZone = v; };
-  H.change.assign = (v, d) => { A.assignCrew(d.id, v); U.toast(v ? 'Asignada a Cuadrilla ' + v + '. El técnico ya la ve en su ruta.' : 'Cuadrilla desasignada.'); };
+  H.change.assign = (v, d) => {
+    const f = A.assignCrew(d.id, v), a = st.find(d.id);
+    if (v === 'auto') U.toast(a.crew ? 'Asignación automática: Cuadrilla ' + a.crew + (f.role === 'apoyo' ? ' (apoyo de zona vecina)' : ' (su zona)') + '.' : 'Ninguna cuadrilla puede atenderla sin alejarse: requiere reprogramar.', a.crew ? 'ok' : 'error');
+    else U.toast(v ? 'Asignada manualmente a Cuadrilla ' + v + '. El técnico ya la ve en su ruta.' : 'Cuadrilla desasignada.');
+  };
   H.act.exportExcel = () => {
     const n = mine().filter((a) => a.date === S.agendaDay && a.status !== 'Pendiente de contacto').length;
     U.toast(`Exportación simulada: se generaría «agenda-${S.contractor}-${S.agendaDay}.xlsx» con ${n} filas (sin DNI).`, 'info');
@@ -96,19 +100,25 @@
   function cuadrillas() {
     const day = S.agendaDay, slots = D.slotsFor(day);
     const list = mine().filter((a) => a.date === day && !['Pendiente de contacto', 'Cancelada'].includes(a.status));
-    return head('Cuadrillas', `Citas asignadas por cuadrilla y franja · ${D.CONTRACTORS[S.contractor]}. Capacidad: ${D.CREW_SLOT_CAPACITY} visitas por franja.`) + dayTabs('agendaDay', day) + `
+    return head('Cuadrillas', `Cada cuadrilla trabaja una zona. Capacidad: ${D.CREW_SLOT_CAPACITY} visitas por franja y ${D.CREW_DAY_CAPACITY} por día. Si su zona se llena, apoya la cuadrilla vecina (zona a ${D.SUPPORT_KM} km o menos y desvío de ${D.SUPPORT_DETOUR} min o menos).`) + dayTabs('agendaDay', day) + `
     <div class="card table-wrap"><table class="table table-matrix">
       <thead><tr><th scope="col">Cuadrilla</th>${slots.map((s) => `<th scope="col">${s}</th>`).join('')}<th scope="col">Total</th></tr></thead>
       <tbody>
-        ${D.CREWS.map((c) => { const mineC = list.filter((a) => a.crew === c); return `<tr><th scope="row">Cuadrilla ${c}</th>${slots.map((s) => { const n = mineC.filter((a) => a.slot === s).length; return `<td><span class="cell-count ${n >= D.CREW_SLOT_CAPACITY ? 'is-full' : n ? 'is-some' : ''}">${n}</span>${n >= D.CREW_SLOT_CAPACITY ? '<span class="sr-only"> (llena)</span>' : ''}</td>`; }).join('')}<td><strong>${mineC.length}</strong></td></tr>`; }).join('')}
+        ${D.CREWS.map((c) => { const mineC = list.filter((a) => a.crew === c); return `<tr><th scope="row">Cuadrilla ${c}<br><span class="muted small">${st.zoneName(S.contractor, c)}</span></th>${slots.map((s) => { const n = mineC.filter((a) => a.slot === s).length; return `<td><span class="cell-count ${n >= D.CREW_SLOT_CAPACITY ? 'is-full' : n ? 'is-some' : ''}">${n}</span>${n >= D.CREW_SLOT_CAPACITY ? '<span class="sr-only"> (llena)</span>' : ''}</td>`; }).join('')}<td><strong>${mineC.length}</strong></td></tr>`; }).join('')}
         <tr class="row-muted"><th scope="row">Sin asignar</th>${slots.map((s) => `<td>${list.filter((a) => !a.crew && a.slot === s).length}</td>`).join('')}<td><strong>${list.filter((a) => !a.crew).length}</strong></td></tr>
       </tbody></table></div>
     <h2 class="section-title">Rutas del día</h2>
     <div class="crew-grid">${D.CREWS.map((c) => {
       const r = st.route(S.contractor, c, day);
-      return `<section class="card crew-card"><h3 class="card-title">${icon('team')}Cuadrilla ${c}</h3>
+      const given = r.legs.filter((l) => l.stop.a.assign && l.stop.a.assign.mode === 'apoyo').length;
+      const received = list.filter((a) => a.assign && a.assign.mode === 'apoyo' && a.assign.home === c).length;
+      const load = r.legs.length / D.CREW_DAY_CAPACITY;
+      return `<section class="card crew-card"><h3 class="card-title"><span class="crew-dot" style="background:${H.map.CREW_COLORS[D.CREWS.indexOf(c)]}"></span>Cuadrilla ${c}</h3>
+        <p class="muted small">Zona: <strong>${st.zoneName(S.contractor, c)}</strong></p>
+        <div class="load" role="img" aria-label="Carga ${r.legs.length} de ${D.CREW_DAY_CAPACITY} visitas"><span style="width:${Math.min(100, load * 100)}%" class="${load >= 1 ? 'is-full' : load >= 0.8 ? 'is-high' : ''}"></span></div>
+        <p class="small">${r.legs.length} de ${D.CREW_DAY_CAPACITY} visitas${load >= 1 ? ' · <strong class="text-red">llena</strong>' : ''}${given ? ` · <span class="text-amber">da apoyo en ${given}</span>` : ''}${received ? ` · recibe apoyo en ${received}` : ''}</p>
         ${r.legs.length ? `<p><strong>${r.legs.length}</strong> visitas · ${Math.round(r.travel)} min de manejo · ${r.km.toFixed(1)} km</p><p class="muted small">Salida ${st.hm(st.routeCfg[S.contractor].depart)} · llegada a B ${st.hm(r.finish)}${r.lateCount ? ' · ' + r.lateCount + ' fuera de franja' : ''}</p>
-        <ol class="crew-order">${r.legs.map((l) => `<li>${esc(l.stop.label)} <span class="muted small">${l.stop.slot}</span></li>`).join('')}</ol>` : '<p class="muted">Sin visitas asignadas.</p>'}
+        <ol class="crew-order">${r.legs.map((l) => `<li>${esc(l.stop.label)} <span class="muted small">${l.stop.slot}${l.stop.a.assign && l.stop.a.assign.mode === 'apoyo' ? ' · apoyo a Cuadrilla ' + l.stop.a.assign.home : ''}</span></li>`).join('')}</ol>` : '<p class="muted">Sin visitas asignadas.</p>'}
         ${btn('Ver ruta en el mapa', 'toRoute', { data: { crew: c }, cls: 'btn-ghost btn-sm', icon: 'map' })}</section>`;
     }).join('')}</div>`;
   }
@@ -135,7 +145,7 @@
       </div>
       ${L.view === 'una' ? field('Escenario', select('labScenario', [['hub', 'Citas del hub (cuadrilla y día)'], ['ampliado', 'Escenario ampliado: 12 viviendas']], L.scenario, { id: 'lab-sc', label: 'Escenario' })) : ''}
       ${L.view === 'todas' || L.scenario === 'hub' ? field('Día', select('labDay', workdays().map((d) => [d, U.dayLabel(d)]), L.day, { id: 'lab-day', label: 'Día' })) : ''}
-      ${L.view === 'una' && L.scenario === 'hub' ? field('Cuadrilla', select('labCrew', D.CREWS.map((c) => [c, 'Cuadrilla ' + c]), L.crew, { id: 'lab-crew', label: 'Cuadrilla' })) : ''}
+      ${L.view === 'una' && L.scenario === 'hub' ? field('Cuadrilla', select('labCrew', D.CREWS.map((c) => [c, 'Cuadrilla ' + c + ' · ' + st.zoneName(S.contractor, c)]), L.crew, { id: 'lab-crew', label: 'Cuadrilla' })) : ''}
       ${field('Punto A (salida)', select('labStart', places, cfg.start, { id: 'lab-a', label: 'Punto A' }))}
       ${field('Punto B (llegada)', select('labEnd', places, cfg.end, { id: 'lab-b', label: 'Punto B' }))}
       ${field('Hora de salida', select('labDepart', TIMES, String(cfg.depart), { id: 'lab-dep', label: 'Hora de salida' }))}
@@ -182,7 +192,7 @@
     if (E.v) {
       const d4 = E.n === 4;
       verdict = E.v.ok
-        ? `<div class="verdict is-ok">${icon('check')}<div><strong>Sí cabe en la ruta</strong> · día ${E.n} desde la solicitud${d4 ? ' (excepción del día 4: cae dentro del recorrido)' : ''}.<br>Desvío: <strong>+${Math.round(E.v.detour)} min</strong> de manejo · llegaría a las <strong>${st.hm(E.v.eta)}</strong>${E.v.start - E.v.eta > 1 ? ` y atendería desde las <strong>${st.hm(E.v.start)}</strong>` : ''} · nadie llega tarde. En el mapa la visita aparece con el pin azul.</div></div>
+        ? `<div class="verdict is-ok">${icon('check')}<div><strong>Sí cabe en la ruta</strong>${E.v.role === 'apoyo' ? ' (como apoyo: no es la zona de esta cuadrilla)' : ''} · día ${E.n} desde la solicitud${d4 ? ' (excepción del día 4: cae dentro del recorrido)' : ''}.<br>Desvío: <strong>+${Math.round(E.v.detour)} min</strong> de manejo · llegaría a las <strong>${st.hm(E.v.eta)}</strong>${E.v.start - E.v.eta > 1 ? ` y atendería desde las <strong>${st.hm(E.v.start)}</strong>` : ''} · nadie llega tarde. En el mapa la visita aparece con el pin azul.</div></div>
            <div class="btn-row">${btn('Aplicar reprogramación', 'evalApply', { cls: 'btn-primary', icon: 'calendar' })}${btn('Limpiar', 'evalClear', { cls: 'btn-ghost', icon: 'x' })}</div>`
         : `<div class="verdict ${E.v.same ? '' : 'is-no'}">${icon(E.v.same ? 'info' : 'alert')}<div><strong>${E.v.same ? 'Sin cambios' : 'No se reprograma'}</strong>: ${esc(E.v.reason.charAt(0).toLowerCase() + E.v.reason.slice(1))}.${d4 && !E.v.same ? ' El técnico mantiene la visita ya programada.' : ''}</div></div>
            <div class="btn-row">${btn('Limpiar', 'evalClear', { cls: 'btn-ghost', icon: 'x' })}</div>`;
@@ -228,6 +238,7 @@
       draw: (c) => {
         H.map.districts(c);
         if (S.lab.traffic) H.map.traffic(c, mapTime, cfg.cond);
+        if (L.scenario === 'hub') H.map.zone(c, D.CREW_ZONES[S.contractor][L.crew], H.map.CREW_COLORS[D.CREWS.indexOf(L.crew)], 'Zona de la Cuadrilla ' + L.crew, true);
         H.map.route(c, o, opt, cfg.cond, { focusLeg: L.leg, doneIds: done, newId: EV.v && EV.v.ok ? EV.a.id : null, onLeg: (i) => H.run(() => { S.lab.leg = i; S.lab.alt = 0; }) });
         if (alts) H.map.alts(c, alts, L.alt, (i) => H.run(() => { S.lab.alt = i; }));
       }
@@ -255,7 +266,7 @@
             const isEnd = i === opt.legs.length, l = opt.legs[i];
             return `<li><button class="itin-leg ${L.leg === i ? 'is-on' : ''}" data-act="labLeg" data-i="${i}" aria-pressed="${L.leg === i}">${icon('nav')}<span>Tramo ${i + 1}: ${Math.round(lg.travel)} min · ${lg.km.toFixed(1)} km</span>${icon('chevron')}</button></li>
             ${isEnd ? `<li class="itin-ab"><span class="itin-mark itin-b">B</span><div><strong>${D.PLACES[cfg.end].label}</strong><p class="muted small">${D.PLACES[cfg.end].address}, ${D.PLACES[cfg.end].zone} · llegada ${st.hm(opt.finish)}</p></div></li>` :
-              `<li class="itin-stop ${done.has(l.stop.id) ? 'is-done' : ''}"><span class="itin-num ${l.late > 0.5 ? 'is-late' : ''}">${i + 1}</span><div><strong>${esc(l.stop.label)}</strong> ${l.stop.a ? chip(l.stop.a.status) : ''}
+              `<li class="itin-stop ${done.has(l.stop.id) ? 'is-done' : ''}"><span class="itin-num ${l.late > 0.5 ? 'is-late' : ''}">${i + 1}</span><div><strong>${esc(l.stop.label)}</strong> ${l.stop.a ? chip(l.stop.a.status) + ' ' + U.assignTag(l.stop.a) : ''}
                 <p class="muted small">${l.stop.a ? esc(l.stop.a.address) + ', ' + l.stop.a.zone : esc(l.stop.address || '')}</p>
                 <p class="small">Franja ${l.stop.slot} · llega <strong>${st.hm(l.arrive)}</strong>${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''} · atención ${st.hm(l.start)}–${st.hm(l.finish)}</p>
                 ${l.late > 0.5 ? `<p class="small text-red">${icon('alert')}Llega ${Math.round(l.late)} min tarde a su franja</p>` : ''}</div></li>`}`;
@@ -286,6 +297,7 @@
       draw: (c) => {
         H.map.districts(c);
         if (S.lab.traffic) H.map.traffic(c, cfg.depart, cfg.cond);
+        D.CREWS.forEach((k, i) => H.map.zone(c, D.CREW_ZONES[S.contractor][k], H.map.CREW_COLORS[i], 'Cuadrilla ' + k));
         routes.forEach((x, i) => { if (x.stops.length) H.map.route(c, o, x.r, cfg.cond, { color: H.map.CREW_COLORS[i], pinColor: H.map.CREW_COLORS[i], tips: false, onLeg: () => H.run(() => { S.lab.view = 'una'; S.lab.crew = x.crew; S.lab.scenario = 'hub'; S.lab.leg = null; }) }); });
         if (!any) Object.values(D.districts).forEach((p) => p.forEach((q) => c.bounds.extend(q)));
       }

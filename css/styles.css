@@ -586,3 +586,13 @@ select.input { padding-right: 32px; }
 .verdict.is-ok { background: var(--green-50); color: #174F2C; }
 .verdict.is-no { background: var(--red-50); color: #7A1A12; }
 @media (max-width: 640px) { .eval-row { grid-template-columns: 1fr; } }
+
+/* Asignación por zonas */
+.assign-cell { min-width: 230px; }
+.assign-cell .tag { margin-top: 6px; white-space: normal; }
+.load { height: 8px; border-radius: 99px; background: #ECEDE8; overflow: hidden; }
+.load span { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+.load span.is-high { background: #F29900; }
+.load span.is-full { background: #E3342F; }
+.crew-tag span { font-size: 11px; letter-spacing: .04em; text-transform: none; background: rgba(255, 255, 255, .92); }
+.lg-circle { display: inline-block; width: 16px; height: 16px; border-radius: 50%; border: 2px dashed #1A73E8; background: rgba(26, 115, 232, .1); }

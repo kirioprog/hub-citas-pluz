@@ -7,7 +7,7 @@
     role: null, loginRole: null,
     page: { pluz: 'resumen', contratista: 'agenda' },
     contractor: 'A',
-    tech: { contractor: 'A', crew: '1', open: null, tab: 'lista', howto: false, alt: 0, result: {}, comment: {} },
+    tech: { contractor: 'A', crew: '2', open: null, tab: 'lista', howto: false, alt: 0, result: {}, comment: {} },
     selected: null,
     filters: { estado: '', zona: '', contratista: '', dia: '', q: '' },
     simId: 'FT-2026-1041', simRep: false,
@@ -183,14 +183,14 @@
           ${btn('Ingresar', null, { type: 'submit', cls: 'btn-primary btn-block', icon: 'chevron' })}
         </form>` : ''}
         <p class="demo-note">${icon('info')}Selector de rol solo para la demostración</p>
-        <p class="version-note">Versión 2026.11.23-5 · 6 cuadrillas con rutas y evaluador de reprogramación</p>
+        <p class="version-note">Versión 2026.11.23-6 · asignación automática por zonas con apoyo entre cuadrillas</p>
         <details class="login-help">
           <summary>¿Qué se puede demostrar?</summary>
           <ol>
             <li>Pluz &gt; Simulador de cliente: Carlos Mendoza confirma su franja.</li>
             <li>Contratista &gt; Cambios: la confirmación aparece como «Nuevo».</li>
-            <li>Contratista &gt; Agenda: asigna Cuadrilla 1 a Carlos.</li>
-            <li>Técnico (A · Cuadrilla 1): la visita aparece en la ruta optimizada; marca «Voy en camino» y el resultado.</li>
+            <li>La cuadrilla se asigna sola por zona: la Cuadrilla 1 (su zona) está llena de 10:00 a 12:00, así que la vecina Cuadrilla 2 la apoya. El contratista puede cambiarla en Agenda.</li>
+            <li>Técnico (A · Cuadrilla 2): la visita aparece en la ruta optimizada; marca «Voy en camino» y el resultado.</li>
             <li>Pluz &gt; Citas: el estado y la línea de tiempo lo reflejan todo.</li>
           </ol>
         </details>

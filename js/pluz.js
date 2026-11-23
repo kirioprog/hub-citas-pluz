@@ -158,7 +158,7 @@
           ${dl('Dirección', `${esc(a.address)}, ${a.zone} ${a.addressValid ? tag('Validada', 'green') : tag('Por validar', 'amber')}`)}
           ${dl('DNI', `<span class="mono">${esc(a.dni)}</span> ${tag('Solo visible para Pluz', 'blue')}`)}
           ${dl('Franja', a.date ? `${U.cap(U.dateLong(a.date))} · <strong>${a.slot}</strong>` : 'Sin franja asignada')}
-          ${dl('Contratista y cuadrilla', `${D.CONTRACTORS[a.contractor]} · ${a.crew ? 'Cuadrilla ' + a.crew : 'Sin cuadrilla'}`)}
+          ${dl('Contratista y cuadrilla', `${D.CONTRACTORS[a.contractor]} · ${a.crew ? 'Cuadrilla ' + a.crew + ' (' + st.zoneName(a.contractor, a.crew) + ')' : 'Sin cuadrilla'} ${U.assignTag(a)}<br><span class="muted small">Zona de la visita: Cuadrilla ${st.homeCrew(a).crew} · ${st.homeCrew(a).zone.name}</span>`)}
           ${dl('Plazo de visita', `${U.remainingText(a)} <span class="muted small">(vence ${U.dateShort(st.deadline(a))}; solicitud del ${U.dateShort(a.requested)})</span>`)}
           ${dl('Intentos de contacto', a.attempts)}
           ${a.representative ? dl('Representante', esc(a.representative)) : ''}
@@ -206,7 +206,7 @@
         <div class="slot-grid">
           ${d.slots.map((s) => {
             const on = selDate === d.date && selSlot === s.slot;
-            const sub = s.current ? 'Horario actual' : s.ok ? (staff ? `Cuadrilla ${s.crew} · +${Math.round(s.detour)} min de ruta` : (s.dayFour ? 'Disponible · cabe en la ruta' : 'Disponible')) : (staff ? s.reason : 'No disponible');
+            const sub = s.current ? 'Horario actual' : s.ok ? (staff ? `Cuadrilla ${s.crew}${s.role === 'apoyo' ? ' (apoyo)' : ''} · +${Math.round(s.detour)} min de ruta` : (s.dayFour ? 'Disponible · cabe en la ruta' : 'Disponible')) : (staff ? s.reason : 'No disponible');
             return `<button type="button" class="slot ${s.ok ? 'is-ok' : 'is-no'} ${on ? 'is-on' : ''}" data-act="${act}" data-date="${d.date}" data-slot="${s.slot}" aria-pressed="${on}" ${s.ok ? '' : 'disabled'}><span class="slot-time">${s.slot}</span><span class="slot-sub">${esc(sub)}</span></button>`;
           }).join('')}
         </div>
@@ -240,6 +240,7 @@
       { key: 'plazo', title: 'Plazo de 1 día o menos sin confirmar', icon: 'clock', tone: 'red', items: st.appts.filter(st.atRisk), why: (a) => `${st.remaining(a) <= 0 ? 'Vence hoy' : 'Queda 1 día'} · ${a.status}` },
       { key: 'sinrespuesta', title: 'Clientes sin respuesta tras 2 intentos', icon: 'chat', tone: 'amber', items: st.appts.filter((a) => a.attempts >= 2 && ['Pendiente de contacto', 'Franja ofrecida'].includes(a.status)), why: (a) => `${a.attempts} intentos de contacto` },
       { key: 'direccion', title: 'Direcciones por validar', icon: 'pin', tone: 'blue', items: st.appts.filter((a) => !a.addressValid && open(a)), why: (a) => `${a.address}, ${a.zone}` },
+      { key: 'sincuadrilla', title: 'Citas sin cuadrilla disponible (zona llena y sin apoyo cercano)', icon: 'team', tone: 'red', items: st.appts.filter((a) => a.assign && a.assign.mode === 'sin' && open(a) && a.date), why: (a) => a.assign.reason },
       { key: 'ausente', title: 'Clientes ausentes: reprogramación al día 4 sujeta a la ruta', icon: 'alert', tone: 'gray', items: st.appts.filter((a) => a.status === 'Cliente ausente' && st.dayN(a, D.today) >= 3 && D.addDays(a.requested, 4) >= D.today), why: (a) => `Día 4: ${U.dateShort(D.addDays(a.requested, 4))}` }
     ];
   }
@@ -250,7 +251,7 @@
         ${g.items.length ? `<ul class="alert-list">${g.items.map((a) => `<li><div><strong>${esc(a.name)}</strong> <span class="muted mono small">${a.id}</span><p class="muted small">${esc(g.why(a))} · ${a.zone} · ${D.CONTRACTORS[a.contractor]}</p></div><div class="btn-row">
           ${g.key === 'direccion' ? btn('Validar', 'validateAddress', { data: { id: a.id }, cls: 'btn-ghost btn-sm', icon: 'check' }) : ''}
           ${g.key === 'sinrespuesta' || g.key === 'plazo' ? btn('Reenviar WhatsApp', 'resend', { data: { id: a.id }, cls: 'btn-ghost btn-sm', icon: 'send' }) : ''}
-          ${g.key === 'ausente' ? btn('Ver opciones', 'askReschedule', { data: { id: a.id }, cls: 'btn-ghost btn-sm', icon: 'calendar' }) : ''}
+          ${g.key === 'ausente' || g.key === 'sincuadrilla' ? btn('Ver opciones', 'askReschedule', { data: { id: a.id }, cls: 'btn-ghost btn-sm', icon: 'calendar' }) : ''}
           ${btn('Detalle', 'open', { data: { id: a.id }, cls: 'btn-ghost btn-sm', icon: 'chevron' })}</div></li>`).join('')}</ul>` : '<p class="muted">Sin casos por ahora.</p>'}
       </section>`).join('');
   }
@@ -319,7 +320,11 @@
   }
   H.act.simSelect = (d) => { S.simId = d.id; S.simRep = false; };
   H.act.simStart = (d) => { A.startContact(d.id); };
-  H.act.simConfirm = (d) => { A.confirm(d.id); U.toast('El cliente confirmó. Pluz, el contratista y el técnico ya lo ven.'); };
+  H.act.simConfirm = (d) => {
+    A.confirm(d.id);
+    const a = st.find(d.id), m = a.assign && a.assign.mode;
+    U.toast('El cliente confirmó. ' + (a.crew ? 'Asignada automáticamente a Cuadrilla ' + a.crew + (m === 'apoyo' ? ' como apoyo (la Cuadrilla ' + a.assign.home + ' de su zona está llena)' : ' (su zona)') + '.' : 'Ninguna cuadrilla puede atenderla: revisa Alertas.'));
+  };
   H.act.simChange = (d) => { A.askChange(d.id); };
   H.act.simPick = (d) => { A.clientPick(d.id, d.date, d.slot, 'WhatsApp'); U.toast('Nuevo horario registrado.'); };
   H.act.simRep = () => { S.simRep = true; setTimeout(() => { const el = document.getElementById('rep-name'); if (el) el.focus(); }, 0); };
@@ -364,7 +369,7 @@
         ${q.results === null ? '<p class="muted">Completa los datos y pulsa «Buscar horarios». Se evalúan los días 1 a 3 desde hoy, la capacidad de cada franja y el desvío que causaría en cada ruta.</p>' :
           q.results.length ? `<div class="opt-list" role="radiogroup" aria-label="Horarios sugeridos">${q.results.map((o, i) => `
             <button type="button" role="radio" aria-checked="${q.sel === i}" class="opt ${q.sel === i ? 'is-on' : ''}" data-act="quickSel" data-i="${i}">
-              <span class="opt-main"><strong>${U.dayLabel(o.date)} · ${o.slot}</strong><span class="muted small">Día ${o.n} · ${D.CONTRACTORS[o.contractor]} · cuadrilla sugerida ${o.crew}</span></span>
+              <span class="opt-main"><strong>${U.dayLabel(o.date)} · ${o.slot}</strong><span class="muted small">Día ${o.n} · ${D.CONTRACTORS[o.contractor]} · Cuadrilla ${o.crew} ${o.role === 'apoyo' ? '(apoyo de zona vecina)' : '(su zona)'}</span></span>
               <span class="opt-side">${i === 0 ? tag('Recomendado', 'green') : ''}<span class="small">+${Math.round(o.detour)} min de ruta</span></span>
             </button>`).join('')}</div>
             <div class="btn-row">${btn('Ofrecer por WhatsApp', 'quickCreate', { data: { mode: 'ofrecer' }, cls: 'btn-wa', icon: 'send' })}${btn('Confirmar ahora (cliente en línea)', 'quickCreate', { data: { mode: 'confirmar' }, cls: 'btn-primary', icon: 'check' })}</div>` :

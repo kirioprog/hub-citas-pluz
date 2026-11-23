@@ -29,8 +29,8 @@ El botón **Cambiar de rol** está en todas las vistas y conserva el estado.
 
 1. Ingresa como **Pluz** → **Simulador de cliente** → Carlos Mendoza → **Confirmo**.
 2. **Cambiar de rol** → **Contratista** → **Cambios**: la confirmación aparece con la marca **Nuevo**.
-3. **Agenda** → asigna **Cuadrilla 1** a Carlos.
-4. **Cambiar de rol** → **Técnico** (Contratista A · Cuadrilla 1): Carlos aparece en la ruta, en el orden óptimo. Ábrelo → **Voy en camino** → **Llegué** → resultado → **Guardar**.
+3. La cuadrilla se asigna **automáticamente por zona**: la de Carlos (Cuadrilla 1, Santa Anita Oeste) está llena de 10:00 a 12:00, así que la apoya la vecina **Cuadrilla 2** (+13 min). Se ve en **Cambios** y en **Agenda**, donde el contratista puede cambiarla.
+4. **Cambiar de rol** → **Técnico** (Contratista A · Cuadrilla 2): Carlos aparece en la ruta, en el orden óptimo. Ábrelo → **Voy en camino** → **Llegué** → resultado → **Guardar**.
 5. **Cambiar de rol** → **Pluz** → **Citas** → Carlos: el estado y la línea de tiempo lo reflejan todo.
 
 Otras demostraciones:
@@ -54,12 +54,21 @@ Otras demostraciones:
 5. **Técnico en camino**, con la hora estimada de llegada calculada con la ruta y el tráfico.
 6. **Resultado**: realizada, o cliente ausente con la opción de reprogramar según la regla del día 4.
 
+## Asignación automática por zonas
+
+- Cada contratista tiene 3 cuadrillas y cada cuadrilla trabaja una zona. **A**: Santa Anita Oeste, Santa Anita Este y Ate Vitarte. **B**: La Molina Norte, La Molina Sur y Ate Sur · Mayorazgo.
+- Cuando una cita queda agendada (el cliente confirma, reprograma o registra un representante, o se agenda rápido), el sistema la asigna a la **cuadrilla de su zona**, que es la más cercana a la vivienda.
+- Si esa cuadrilla **está llena** (2 visitas por franja o 5 por día) o no llegaría a tiempo, la **apoya la cuadrilla vecina** que menos se desvía, **sin alejarse mucho**: su zona debe estar a 5 km o menos de la visita y el desvío no puede superar 20 min. Se registra como «Apoyo» en el historial, en Cambios, en la Agenda y en el mapa.
+- Si ninguna puede atenderla, la cita queda **sin cuadrilla** y aparece en **Pluz → Alertas** para reprogramarla.
+- El contratista puede cambiar la cuadrilla a mano en la Agenda o volver a «Asignar automáticamente».
+- En **Contratista → Cuadrillas** se ve la carga de cada cuadrilla (por ejemplo, 5 de 5: llena) y quién da o recibe apoyo. En **Rutas → Todas las cuadrillas**, las zonas aparecen como círculos de colores.
+
 ## Reglas de agenda
 
 - Franjas: lunes a viernes 08:00–18:00 y sábado 08:00–14:00, en bloques de 2 horas. Los domingos no hay visitas.
 - La visita debe ocurrir entre el **día 1 y el día 3** desde la solicitud.
 - **Día 4 (excepción)**: solo si ya existe una ruta programada ese día para la cuadrilla, la franja cae dentro de ese recorrido, nadie llega tarde y el desvío no supera 25 minutos. Si afecta la ruta, **no se reprograma** y el técnico mantiene la visita.
-- Capacidad: 2 visitas por cuadrilla y franja. Antes de aceptar un horario, se inserta la visita en la ruta y se verifica que el técnico llegue dentro de la franja sin retrasar a nadie.
+- Capacidad: 2 visitas por cuadrilla y franja, y 5 por cuadrilla y día. Antes de aceptar un horario, se inserta la visita en la ruta y se verifica que el técnico llegue dentro de la franja sin retrasar a nadie.
 - En riesgo: la cita sigue sin confirmar y le queda 1 día o menos de plazo.
 
 ## Mapa y optimización de rutas con grafos

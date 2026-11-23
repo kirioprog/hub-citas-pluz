@@ -181,6 +181,15 @@
     return m;
   }
 
+  /* Zona de trabajo de una cuadrilla (círculo de referencia) */
+  function zone(ctx, z, color, label, fit) {
+    L.circle(z.center, { radius: 1600, color, weight: 2, opacity: 0.55, dashArray: '4 6', fillColor: color, fillOpacity: 0.07, interactive: false }).addTo(ctx.layer);
+    L.marker(z.center, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'zone-tag crew-tag', html: `<span style="color:${color};border-color:${color}">${esc(label)} · ${esc(z.name)}</span>`, iconSize: null }) }).addTo(ctx.layer);
+    if (fit) ctx.bounds.extend(z.center);
+  }
+
+  const apoyoTxt = (a) => (a && a.assign && a.assign.mode === 'apoyo' ? `<p class="pop-late">Apoyo: la Cuadrilla ${esc(a.assign.home)} (su zona) — ${esc((a.assign.reason || '').toLowerCase())}</p>` : '');
+
   /* Ruta optimizada completa */
   function route(ctx, o, res, cond, x = {}) {
     const color = x.color || BLUE;
@@ -196,9 +205,10 @@
     res.legs.forEach((l, i) => {
       const done = x.doneIds && x.doneIds.has(l.stop.id);
       const a = l.stop.a;
-      const pop = `<div class="pop"><p class="pop-k">Parada ${i + 1}${a ? ' · ' + esc(a.id) : ''}</p><p class="pop-t">${esc(l.stop.label)}</p>${a ? `<p>${esc(a.address)}, ${a.zone}</p>` : l.stop.address ? `<p>${esc(l.stop.address)}</p>` : ''}<p>Franja <b>${l.stop.slot}</b></p><p>Llega ${hm(l.arrive)}${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''}</p><p>Atención ${hm(l.start)}–${hm(l.finish)}</p>${l.late > 0.5 ? `<p class="pop-late">Llega ${Math.round(l.late)} min tarde</p>` : ''}${a ? `<p>${esc(a.status)}</p>` : ''}</div>`;
+      const pop = `<div class="pop"><p class="pop-k">Parada ${i + 1}${a ? ' · ' + esc(a.id) : ''}</p><p class="pop-t">${esc(l.stop.label)}</p>${a ? `<p>${esc(a.address)}, ${a.zone}</p>` : l.stop.address ? `<p>${esc(l.stop.address)}</p>` : ''}<p>Franja <b>${l.stop.slot}</b></p><p>Llega ${hm(l.arrive)}${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''}</p><p>Atención ${hm(l.start)}–${hm(l.finish)}</p>${l.late > 0.5 ? `<p class="pop-late">Llega ${Math.round(l.late)} min tarde</p>` : ''}${a ? `<p>${esc(a.status)}${a.crew ? ' · Cuadrilla ' + a.crew : ''}</p>` : ''}${apoyoTxt(a)}</div>`;
       const isNew = x.newId === l.stop.id;
-      pin(ctx, ll(l.stop.n), `${i + 1}`, `pin-stop ${done ? 'is-done' : ''} ${l.late > 0.5 ? 'is-late' : ''} ${isNew ? 'is-focus' : ''}`, { popup: pop, tip: x.tips === false ? null : (isNew ? 'Reprogramada · ' : '') + hm(l.arrive), z: isNew ? 900 : 500, title: l.stop.label, color: x.pinColor && !done ? x.pinColor : null });
+      const apoyo = a && a.assign && a.assign.mode === 'apoyo';
+      pin(ctx, ll(l.stop.n), `${i + 1}`, `pin-stop ${done ? 'is-done' : ''} ${l.late > 0.5 ? 'is-late' : ''} ${isNew ? 'is-focus' : ''}`, { popup: pop, tip: x.tips === false ? (apoyo ? 'Apoyo' : null) : (isNew ? 'Reprogramada · ' : apoyo ? 'Apoyo · ' : '') + hm(l.arrive), z: isNew ? 900 : 500, title: l.stop.label, color: x.pinColor && !done ? x.pinColor : null });
       tl.stays.push({ a: l.arrive, b: l.finish, pt: ll(l.stop.n), label: (l.wait > 0.5 ? 'Esperando la franja · ' : 'Atendiendo · ') + l.stop.label });
     });
     const place = (n) => Object.values(D.PLACES).find((p) => p.node === n);
@@ -261,9 +271,9 @@
       ${o.crews ? o.crews.map((c, i) => `<span><i class="lg-line lg-thick" style="background:${CREW_COLORS[i]}"></i>${c}</span>`).join('') : '<span><i class="lg-line lg-thick lg-route"></i>Ruta optimizada (con flechas de sentido)</span>'}
       ${o.alt ? '<span><i class="lg-line lg-alt"></i>Ruta alternativa</span>' : ''}
       <span><i class="lg-pin"></i>Parada y hora de llegada</span><span><i class="lg-box">A</i>Salida</span><span><i class="lg-box lg-b">B</i>Llegada</span>
-      <span><i class="lg-zone"></i>Límite de distrito</span>
+      ${o.crews ? '<span><i class="lg-circle"></i>Zona de cada cuadrilla</span>' : ''}<span><i class="lg-zone"></i>Límite de distrito</span>
     </div>`;
   }
 
-  H.map = { slot, mountAll, districts, traffic, route, alts, line, pin, animate, invalidate, legend, ALT, altColor, CREW_COLORS, ll, setBase, ready: !!L };
+  H.map = { zone, slot, mountAll, districts, traffic, route, alts, line, pin, animate, invalidate, legend, ALT, altColor, CREW_COLORS, ll, setBase, ready: !!L };
 })();
