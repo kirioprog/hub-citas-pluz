@@ -12,7 +12,7 @@
     filters: { estado: '', zona: '', contratista: '', dia: '', q: '' },
     simId: 'FT-2026-1041', simRep: false,
     agendaDay: D.today, agendaZone: '', feed: 'todos',
-    lab: { day: D.today, crew: '1', scenario: 'hub', leg: null, alt: 0, view: 'una', traffic: true },
+    lab: { day: D.today, crew: '1', scenario: 'hub', leg: null, alt: 0, view: 'una', traffic: true, evalId: null, evalSlot: null },
     modal: null,
     client: null, clientFrom: null, clientUi: { date: null, slot: null, rep: false },
     quick: { form: { name: '', phone: '', dni: '', zone: 'Ate', address: '0', contractor: '' }, results: null, sel: 0, created: null, errors: {} },
@@ -183,7 +183,7 @@
           ${btn('Ingresar', null, { type: 'submit', cls: 'btn-primary btn-block', icon: 'chevron' })}
         </form>` : ''}
         <p class="demo-note">${icon('info')}Selector de rol solo para la demostración</p>
-        <p class="version-note">Versión 2026.11.23-4 · mapa estilo Google con rutas sobre calles reales</p>
+        <p class="version-note">Versión 2026.11.23-5 · 6 cuadrillas con rutas y evaluador de reprogramación</p>
         <details class="login-help">
           <summary>¿Qué se puede demostrar?</summary>
           <ol>

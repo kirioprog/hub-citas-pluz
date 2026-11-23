@@ -576,3 +576,13 @@ select.input { padding-right: 32px; }
 .lg-box:not(.lg-b) { background: #fff; color: #202124; border: 2px solid #202124; border-radius: 50%; }
 .lg-b { background: #202124; }
 .maplibregl-canvas { outline: none; }
+
+/* Evaluador de reprogramación */
+.eval-card { margin-bottom: 16px; display: grid; gap: 12px; }
+.eval-card .card-title { margin-bottom: 0; }
+.eval-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+.verdict { display: flex; gap: 12px; padding: 12px 14px; border-radius: 10px; background: #F2F2EE; font-size: .92rem; }
+.verdict .icon { flex: none; margin-top: 2px; }
+.verdict.is-ok { background: var(--green-50); color: #174F2C; }
+.verdict.is-no { background: var(--red-50); color: #7A1A12; }
+@media (max-width: 640px) { .eval-row { grid-template-columns: 1fr; } }

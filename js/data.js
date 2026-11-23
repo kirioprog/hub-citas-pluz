@@ -131,7 +131,34 @@
     ['1045', 'Mariana Flores', '956 789 605', 'Ate', 'Av. Marcella 82', [-12.04504, -76.93061], 'Realizada', 'A', '1', -2, 0, '08:00–10:00', 1, true, '46231570', 'M9fP4k'],
     ['1046', 'Gabriel Paredes', '967 890 606', 'La Molina', 'Jr. La Chalana 194', [-12.08586, -76.91517], 'Reprogramada', 'B', '3', -1, 1, '08:00–10:00', 1, true, '41982046', 'G5pW1x'],
     ['1047', 'Camila Rojas', '978 901 607', 'Santa Anita', 'Calle 1 · Coop. Universal 46', [-12.03611, -76.95593], 'Cancelada', 'B', null, -1, 0, '14:00–16:00', 1, true, '48705613', 'C3rJ6v'],
-    ['1048', 'Mateo Vega', '989 012 608', 'Ate', 'Calle La Coruña 280', [-12.05939, -76.94268], 'Cliente ausente', 'B', '3', -3, 0, '08:00–10:00', 1, true, '42390857', 'T6vN2m']
+    ['1048', 'Mateo Vega', '989 012 608', 'Ate', 'Calle La Coruña 280', [-12.05939, -76.94268], 'Cliente ausente', 'B', '3', -3, 0, '08:00–10:00', 1, true, '42390857', 'T6vN2m'],
+    /* Citas adicionales para ver las rutas de las 3 cuadrillas de cada contratista */
+    ['1049', 'Rosa Huamán', '921 334 509', 'Santa Anita', 'Av. Ferrocarril 410', [-12.04046, -76.97768], 'Confirmada', 'A', '1', -1, 0, '10:00–12:00', 1, true, '47120385', 'R4hT8q'],
+    ['1050', 'Jorge Quispe', '932 445 610', 'Ate', 'Calle Los Cipreses 233', [-12.02674, -76.93157], 'Recordada', 'A', '1', -2, 0, '14:00–16:00', 1, true, '43219876', 'J7qP2x'],
+    ['1051', 'Patricia Ccori', '943 556 711', 'Santa Anita', 'Pasaje La Portaleza 18', [-12.03717, -76.97039], 'Confirmada', 'A', '1', -1, 0, '16:00–18:00', 1, true, '45987123', 'P2cC9k'],
+    ['1052', 'Luis Chávez', '954 667 812', 'Santa Anita', 'Av. Los Cipreses 512', [-12.04995, -76.97773], 'Realizada', 'A', '2', -2, 0, '08:00–10:00', 1, true, '40123987', 'L8vZ3m'],
+    ['1053', 'Milagros Rojas', '965 778 913', 'Santa Anita', 'Av. Roger Vidal 145', [-12.05597, -76.96806], 'En camino', 'A', '2', -1, 0, '10:00–12:00', 1, true, '46785231', 'M3rJ7w'],
+    ['1054', 'Óscar Mamani', '976 889 014', 'Ate', 'Calle Berlín 87', [-12.03598, -76.92008], 'Confirmada', 'A', '2', -1, 0, '12:00–14:00', 1, true, '42876510', 'O6mN4p'],
+    ['1055', 'Karina Paz', '987 990 115', 'Santa Anita', 'Av. Santa Ana 760', [-12.03903, -76.94764], 'Recordada', 'A', '2', -2, 0, '14:00–16:00', 1, true, '48230176', 'K9pZ5t'],
+    ['1056', 'Héctor Salas', '918 101 216', 'Ate', 'Calle Marte 301', [-12.03098, -76.94248], 'Realizada', 'A', '3', -2, 0, '08:00–10:00', 1, true, '41567289', 'H2sL6y'],
+    ['1057', 'Daniela Vargas', '929 212 317', 'Ate', 'Av. San Juan 1120', [-12.02471, -76.92473], 'Confirmada', 'A', '3', -1, 0, '10:00–12:00', 1, true, '47651230', 'D5vG8r'],
+    ['1058', 'Ricardo Llanos', '939 323 418', 'Santa Anita', 'Av. Huarochirí 455', [-12.03001, -76.95784], 'Reprogramada', 'A', '3', -2, 0, '12:00–14:00', 1, true, '44098712', 'R1lK3s'],
+    ['1059', 'Silvia Tello', '949 434 519', 'Ate', 'Calle El Campesino 66', [-12.04581, -76.92783], 'Confirmada', 'A', '3', -1, 0, '16:00–18:00', 1, true, '45612309', 'S8tW2n'],
+    ['1060', 'Fernando Ríos', '959 545 620', 'La Molina', 'Jr. Brasilia 220', [-12.06918, -76.94032], 'Realizada', 'B', '1', -2, 0, '08:00–10:00', 1, true, '40987654', 'F4rQ7d'],
+    ['1061', 'Gloria Soto', '969 656 721', 'La Molina', 'Calle Monte Azul 145', [-12.07674, -76.92670], 'Confirmada', 'B', '1', -1, 0, '10:00–12:00', 1, true, '46543210', 'G7sB1h'],
+    ['1062', 'Manuel Ortiz', '979 767 822', 'La Molina', 'Jr. 14 de Setiembre 390', [-12.08681, -76.94166], 'Recordada', 'B', '1', -1, 0, '12:00–14:00', 1, true, '43345678', 'M6oX9c'],
+    ['1063', 'Elena Cárdenas', '989 878 923', 'La Molina', 'Calle Pontevedra 175', [-12.08988, -76.93515], 'Confirmada', 'B', '1', -2, 0, '14:00–16:00', 1, true, '47890123', 'E3cF5j'],
+    ['1064', 'Raúl Guerrero', '917 989 024', 'La Molina', 'Calle Victoria 58', [-12.09469, -76.92505], 'Realizada', 'B', '2', -2, 0, '08:00–10:00', 1, true, '42210987', 'R9gU4v'],
+    ['1065', 'Teresa Núñez', '927 090 125', 'Ate', 'Calle Monte Pissis 240', [-12.06174, -76.93408], 'Confirmada', 'B', '2', -1, 0, '12:00–14:00', 1, true, '45678901', 'T2nY6b'],
+    ['1066', 'Iván Cruz', '937 101 226', 'La Molina', 'Calle Rapallo 133', [-12.08605, -76.90507], 'Confirmada', 'B', '2', -1, 0, '14:00–16:00', 1, true, '41234567', 'I5cH3q'],
+    ['1067', 'Nora Medina', '947 212 327', 'La Molina', 'Av. José León Barandiarán 615', [-12.07370, -76.91341], 'Confirmada', 'B', '3', -1, 0, '10:00–12:00', 1, true, '48765432', 'N8mD2z'],
+    ['1068', 'Alberto Pinto', '957 323 428', 'La Molina', 'Calle Las Cataratas 92', [-12.09757, -76.94491], 'Recordada', 'B', '3', -2, 0, '12:00–14:00', 1, true, '40345678', 'A1pR7e'],
+    ['1069', 'Lourdes Vega', '967 434 529', 'Ate', 'Calle Vulcano 310', [-12.06140, -76.95504], 'Confirmada', 'B', '3', -1, 0, '14:00–16:00', 1, true, '46109876', 'L4vS8u'],
+    ['1070', 'Pedro Zamora', '977 545 630', 'La Molina', 'Calle Los Olivos 404', [-12.07981, -76.95500], 'Confirmada', 'B', '3', 0, 1, '10:00–12:00', 1, true, '43987650', 'P7zA1g'],
+    ['1071', 'Carmen Ruiz', '987 656 731', 'La Molina', 'Jr. Michigan 118', [-12.08782, -76.92819], 'Confirmada', 'B', '3', -1, 1, '12:00–14:00', 1, true, '47012398', 'C6rM4f'],
+    ['1072', 'Julio Paredes', '916 767 832', 'Santa Anita', 'Calle Ezequiel Otoya 77', [-12.04182, -76.98507], 'Confirmada', 'A', '1', -1, 1, '08:00–10:00', 1, true, '42567801', 'J3pT9a'],
+    ['1073', 'Ana Torres', '926 878 933', 'Ate', 'Av. Esperanza 250', [-12.04149, -76.90535], 'Confirmada', 'A', '1', 0, 1, '10:00–12:00', 1, true, '45321098', 'A8tE5k'],
+    ['1074', 'Víctor Huerta', '936 989 034', 'Ate', 'Av. San Juan Bautista 980', [-12.04708, -76.89706], 'Franja ofrecida', 'A', null, 0, 1, '14:00–16:00', 1, true, '44876012', 'V2hU6c']
   ];
 
   H.data = {

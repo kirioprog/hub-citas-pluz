@@ -16,7 +16,7 @@
     }
   });
 
-  const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m % 60)).padStart(2, '0');
+  const hm = (m) => { const r = Math.round(m); return String(Math.floor(r / 60)).padStart(2, '0') + ':' + String(r % 60).padStart(2, '0'); };
   const lima = (date, time) => date + 'T' + time + ':00-05:00';
   const fmtDay = (d) => new Intl.DateTimeFormat('es-PE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(d + 'T12:00:00Z'));
   function dayText(d) {
@@ -117,7 +117,7 @@
         if (!(win[0] < spanEnd && win[1] > spanStart)) { reasons.push('Afecta la ruta: fuera del recorrido programado'); continue; }
         if (detour > MAX_DETOUR_DAY4) { reasons.push('Afecta la ruta: desvío de ' + Math.round(detour) + ' min'); continue; }
       }
-      const cand = { ok: true, crew, contractor, detour, eta: mine.arrive, dayFour, assigned: !!fixedCrew };
+      const cand = { ok: true, crew, contractor, detour, eta: mine.arrive, start: mine.start, dayFour, assigned: !!fixedCrew };
       if (!best || cand.detour < best.detour) best = cand;
     }
     return best || { ok: false, reason: reasons[0] || 'No disponible', dayFour };
@@ -246,6 +246,20 @@
     a.date = date; a.slot = slot; a.status = 'Reprogramada'; a.arrived = false; a.needsConfirm = true;
     chat(a, 'pluz', MSG.reprogramadoPluz(a), { quick: true });
     log(a, 'reprogramada', 'Pluz reprogramó: ' + prev + ' → ' + fd(date) + ' · ' + slot + (f.dayFour ? ' (día 4, cabe en la ruta)' : ''), 'Pluz', 'reprogramacion');
+    emit();
+  };
+
+  /* El contratista reprograma una cita dentro de la ruta de una cuadrilla (con validación de ruta). */
+  A.reprogramToCrew = function (id, date, slot, crew) {
+    const a = find(id);
+    const n = st.dayN(a, date);
+    if (n < 1 || n > 4) throw new Error('Fuera del plazo: sería el día ' + n + ' desde la solicitud.');
+    const f = st.fit(a, date, slot, { crew });
+    if (!f.ok) throw new Error('No se reprograma: ' + f.reason.toLowerCase() + '.');
+    const prev = a.date ? fd(a.date) + ' · ' + a.slot + (a.crew ? ' · Cuadrilla ' + a.crew : '') : 'sin fecha';
+    a.crew = crew; a.date = date; a.slot = slot; a.status = 'Reprogramada'; a.arrived = false; a.needsConfirm = true;
+    chat(a, 'pluz', MSG.reprogramadoPluz(a), { quick: true });
+    log(a, 'reprogramada', 'Contratista reprogramó: ' + prev + ' → ' + fd(date) + ' · ' + slot + ' · Cuadrilla ' + crew + (f.dayFour ? ' (día 4, cabe en la ruta)' : '') + ' · +' + Math.round(f.detour) + ' min de ruta', D.CONTRACTORS[a.contractor], 'reprogramacion');
     emit();
   };
 
@@ -388,7 +402,7 @@
         h('whatsapp', 'Intento de contacto 1 · sin respuesta', 'Pluz', requested, '09:20');
         h('whatsapp', 'Intento de contacto 2 · sin respuesta', 'Pluz', D.addDays(requested, 1), '10:05');
       }
-      if (['Confirmada', 'En camino', 'Realizada', 'Cliente ausente', 'Reprogramada'].includes(status)) {
+      if (['Confirmada', 'Recordada', 'En camino', 'Realizada', 'Cliente ausente', 'Reprogramada'].includes(status)) {
         h('confirmo', 'Cliente confirmó la visita (vía WhatsApp)', 'Cliente', requested, '10:30');
         a.chat.push({ from: 'cliente', text: 'Confirmo', at: lima(requested, '10:30') });
         a.chat.push({ from: 'pluz', text: MSG.confirmado(a), at: lima(requested, '10:31'), link: true });
@@ -403,6 +417,10 @@
         a.chat.push({ from: 'pluz', text: MSG.cancelada(), at: lima(requested, '11:01') });
       }
       if (crew) h('asignacion', 'Asignada a Cuadrilla ' + crew + ' (' + D.CONTRACTORS[contractor] + ')', D.CONTRACTORS[contractor], requested, '16:00');
+      if (status === 'Recordada') {
+        h('recordatorio', 'Recordatorio de visita enviado', 'Pluz', a.date, '07:00');
+        a.chat.push({ from: 'pluz', text: MSG.recordatorio(a), at: lima(a.date, '07:00') });
+      }
       if (['En camino', 'Realizada', 'Cliente ausente'].includes(status)) {
         h('recordatorio', 'Recordatorio de visita enviado', 'Pluz', a.date, '07:00');
         a.chat.push({ from: 'pluz', text: MSG.recordatorio(a), at: lima(a.date, '07:00') });

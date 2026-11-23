@@ -35,6 +35,8 @@ El botón **Cambiar de rol** está en todas las vistas y conserva el estado.
 
 Otras demostraciones:
 
+- **Varias cuadrillas**: hay 34 citas de ejemplo. Hoy, cada una de las 3 cuadrillas de cada contratista tiene una ruta de 4 o 5 visitas; mañana hay rutas de la Cuadrilla 1 (A) y la Cuadrilla 3 (B). En Contratista → Rutas → **Todas las cuadrillas** se ven las tres rutas a la vez, cada una de un color; en Técnico se puede elegir cualquiera de las 6 cuadrillas.
+- **Evaluar reprogramación en la ruta**: Contratista B → Rutas → Día: mañana → Cuadrilla 3 → en «Evaluar reprogramación» elige *Mateo Vega* (cliente ausente, su día 4 es mañana). En 12:00–14:00 cabe dentro del recorrido (+11 min, pin azul en el mapa); en 16:00–18:00 se rechaza porque afectaría la ruta y el técnico mantiene la visita. *Aplicar reprogramación* asigna la cuadrilla, avisa al cliente por WhatsApp y aparece como «Nuevo» en Cambios.
 - **Regla del día 4**: Pluz → Alertas → «Clientes ausentes» → Mateo Vega → *Ver opciones*. El día 4 solo deja la franja que encaja en la ruta ya programada de la Cuadrilla 3; las demás aparecen como «Afecta la ruta».
 - **Agendamiento rápido**: Pluz → Agendamiento rápido → *Rellenar ejemplo* → *Buscar horarios*. Se proponen los horarios más próximos con menor desvío de ruta. Al crear la cita se genera el enlace único.
 - **Enlace único**: desde el detalle de una cita o desde el chat, *Abrir como cliente*. También funciona en otra pestaña, por ejemplo `…/index.html#/c/T6vN2m` (Mateo) o `#/c/c8Kx2Q` (Carlos).
@@ -109,4 +111,4 @@ js/cliente.js      enlace único del cliente
 
 ## Alcance y restricciones
 
-Sin integraciones reales (Salesforce, SAP, WhatsApp, Google Maps), sin IA, sin datos reales y sin `localStorage`. Las llamadas, los mensajes de WhatsApp, «Cómo llegar» y la exportación a Excel son simulados. Las 8 citas, los nombres, los teléfonos, los DNI y la numeración de las viviendas son ficticios. Las calles y los límites distritales provienen de OpenStreetMap (© colaboradores de OpenStreetMap, ODbL). Se muestra el banner permanente «Datos de ejemplo».
+Sin integraciones reales (Salesforce, SAP, WhatsApp, Google Maps), sin IA, sin datos reales y sin `localStorage`. Las llamadas, los mensajes de WhatsApp, «Cómo llegar» y la exportación a Excel son simulados. Las 34 citas, los nombres, los teléfonos, los DNI y la numeración de las viviendas son ficticios. Las calles y los límites distritales provienen de OpenStreetMap (© colaboradores de OpenStreetMap, ODbL). Se muestra el banner permanente «Datos de ejemplo».

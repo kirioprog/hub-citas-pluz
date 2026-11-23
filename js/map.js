@@ -119,7 +119,7 @@
       if (spec.sig !== en.sig) {
         en.sig = spec.sig;
         stopAnim(en);
-        if (ctx.bounds.isValid()) en.map.fitBounds(ctx.bounds, { padding: [36, 36], maxZoom: spec.maxZoom || 16 });
+        if (ctx.bounds.isValid()) en.map.fitBounds(ctx.bounds, { padding: [48, 48], maxZoom: spec.maxZoom || 16, animate: false });
       } else if (en.anim && en.timeline) {
         en.anim.tl = en.timeline;
       }
@@ -172,7 +172,7 @@
   function pin(ctx, latlng, html, cls, o = {}) {
     const drop = / pin-(stop|status|b)\b/.test(' ' + cls);
     const icon = drop
-      ? L.divIcon({ className: 'pin-wrap', html: `<div class="gpin ${cls}"><span>${html}</span></div>`, iconSize: [34, 44], iconAnchor: [17, 42], popupAnchor: [0, -38], tooltipAnchor: [12, -24] })
+      ? L.divIcon({ className: 'pin-wrap', html: `<div class="gpin ${cls}"${o.color ? ` style="background:${o.color}"` : ''}><span>${html}</span></div>`, iconSize: [34, 44], iconAnchor: [17, 42], popupAnchor: [0, -38], tooltipAnchor: [12, -24] })
       : L.divIcon({ className: 'pin-wrap', html: `<div class="pin ${cls}">${html}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] });
     const m = L.marker(latlng, { icon, zIndexOffset: o.z || 0, keyboard: !!o.popup, title: o.title || '' }).addTo(ctx.layer);
     if (o.popup) m.bindPopup(o.popup, { maxWidth: 260 });
@@ -197,7 +197,8 @@
       const done = x.doneIds && x.doneIds.has(l.stop.id);
       const a = l.stop.a;
       const pop = `<div class="pop"><p class="pop-k">Parada ${i + 1}${a ? ' · ' + esc(a.id) : ''}</p><p class="pop-t">${esc(l.stop.label)}</p>${a ? `<p>${esc(a.address)}, ${a.zone}</p>` : l.stop.address ? `<p>${esc(l.stop.address)}</p>` : ''}<p>Franja <b>${l.stop.slot}</b></p><p>Llega ${hm(l.arrive)}${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''}</p><p>Atención ${hm(l.start)}–${hm(l.finish)}</p>${l.late > 0.5 ? `<p class="pop-late">Llega ${Math.round(l.late)} min tarde</p>` : ''}${a ? `<p>${esc(a.status)}</p>` : ''}</div>`;
-      pin(ctx, ll(l.stop.n), `<span>${i + 1}</span>`, `pin-stop ${done ? 'is-done' : ''} ${l.late > 0.5 ? 'is-late' : ''}`, { popup: pop, tip: x.tips === false ? null : `${hm(l.arrive)}`, z: 500, title: l.stop.label });
+      const isNew = x.newId === l.stop.id;
+      pin(ctx, ll(l.stop.n), `${i + 1}`, `pin-stop ${done ? 'is-done' : ''} ${l.late > 0.5 ? 'is-late' : ''} ${isNew ? 'is-focus' : ''}`, { popup: pop, tip: x.tips === false ? null : (isNew ? 'Reprogramada · ' : '') + hm(l.arrive), z: isNew ? 900 : 500, title: l.stop.label, color: x.pinColor && !done ? x.pinColor : null });
       tl.stays.push({ a: l.arrive, b: l.finish, pt: ll(l.stop.n), label: (l.wait > 0.5 ? 'Esperando la franja · ' : 'Atendiendo · ') + l.stop.label });
     });
     const place = (n) => Object.values(D.PLACES).find((p) => p.node === n);

@@ -166,16 +166,52 @@
     </section>`;
   }
 
+  function evaluate(L) {
+    const a = L.scenario === 'hub' && L.evalId ? st.find(L.evalId) : null;
+    if (!a || !L.evalSlot) return { a };
+    const n = st.dayN(a, L.day);
+    if (a.date === L.day && a.slot === L.evalSlot && a.crew === L.crew) return { a, n, v: { ok: false, same: true, reason: 'Es su horario actual en esta ruta' } };
+    const v = n < 1 ? { ok: false, reason: 'La solicitud se registra después de ese día' } : n > 4 ? { ok: false, reason: 'Fuera del plazo: sería el día ' + n + ' desde la solicitud (máximo día 3, o día 4 si cabe en la ruta)' } : st.fit(a, L.day, L.evalSlot, { contractor: S.contractor, crew: L.crew });
+    return { a, n, v };
+  }
+  function evalCard(L, E, current, opt) {
+    if (L.scenario !== 'hub') return '';
+    const cands = mine().filter((a) => !['Cancelada', 'Realizada', 'En camino'].includes(a.status)).sort((x, y) => x.name.localeCompare(y.name))
+      .map((a) => [a.id, `${a.name} · ${a.status} · ${a.date ? U.dayLabel(a.date) + ' ' + a.slot : 'sin fecha'}${a.crew ? ' · Cuadrilla ' + a.crew : ''}`]);
+    let verdict = '';
+    if (E.v) {
+      const d4 = E.n === 4;
+      verdict = E.v.ok
+        ? `<div class="verdict is-ok">${icon('check')}<div><strong>Sí cabe en la ruta</strong> · día ${E.n} desde la solicitud${d4 ? ' (excepción del día 4: cae dentro del recorrido)' : ''}.<br>Desvío: <strong>+${Math.round(E.v.detour)} min</strong> de manejo · llegaría a las <strong>${st.hm(E.v.eta)}</strong>${E.v.start - E.v.eta > 1 ? ` y atendería desde las <strong>${st.hm(E.v.start)}</strong>` : ''} · nadie llega tarde. En el mapa la visita aparece con el pin azul.</div></div>
+           <div class="btn-row">${btn('Aplicar reprogramación', 'evalApply', { cls: 'btn-primary', icon: 'calendar' })}${btn('Limpiar', 'evalClear', { cls: 'btn-ghost', icon: 'x' })}</div>`
+        : `<div class="verdict ${E.v.same ? '' : 'is-no'}">${icon(E.v.same ? 'info' : 'alert')}<div><strong>${E.v.same ? 'Sin cambios' : 'No se reprograma'}</strong>: ${esc(E.v.reason.charAt(0).toLowerCase() + E.v.reason.slice(1))}.${d4 && !E.v.same ? ' El técnico mantiene la visita ya programada.' : ''}</div></div>
+           <div class="btn-row">${btn('Limpiar', 'evalClear', { cls: 'btn-ghost', icon: 'x' })}</div>`;
+    }
+    return `<section class="card eval-card" aria-labelledby="eval-title">
+      <h2 id="eval-title" class="card-title">${icon('calendar')}Evaluar reprogramación en esta ruta</h2>
+      <p class="muted small">Elige una cita y una franja de <strong>${U.dayLabel(L.day)}</strong> para ver si cabe en la ruta de la <strong>Cuadrilla ${L.crew}</strong>. Regla: la visita va del día 1 al 3 desde la solicitud; el día 4 solo si cae dentro del recorrido ya programado, sin retrasar a nadie y con un desvío de 25 min como máximo.</p>
+      <div class="eval-row">
+        ${field('Cita', select('evalId', [['', 'Elige una cita…']].concat(cands), L.evalId || '', { id: 'ev-id', label: 'Cita a evaluar' }))}
+        ${field('Nueva franja', select('evalSlot', [['', 'Elige una franja…']].concat(D.slotsFor(L.day)), L.evalSlot || '', { id: 'ev-slot', label: 'Nueva franja' }))}
+      </div>
+      ${verdict}
+      ${E.v && E.v.ok ? `<p class="small muted">Ruta actual: ${Math.round(current.travel)} min · ${current.km.toFixed(1)} km · llega a B ${st.hm(current.finish)} → con la visita: ${Math.round(opt.travel)} min · ${opt.km.toFixed(1)} km · llega a B ${st.hm(opt.finish)}.</p>` : ''}
+    </section>`;
+  }
+
   function oneCrew(o, cfg) {
     const L = S.lab;
-    const stops = labStops();
+    const EV = evaluate(L);
+    const currentStops = labStops();
+    const stops = EV.v && EV.v.ok ? currentStops.filter((s) => s.id !== EV.a.id).concat([st.toStop(EV.a, L.evalSlot)]) : currentStops;
+    const current = EV.v && EV.v.ok ? R.optimize(currentStops, o) : null;
     const t0 = performance.now();
     const opt = R.optimize(stops, o);
     const ms = performance.now() - t0;
     const base = R.baseline(stops, o);
     if (!stops.length) {
       return mapCard('lab', 'Mapa', cfg.depart, H.map.slot('lab', { height: '62vh', label: 'Mapa sin visitas', sig: 'empty', draw: (c) => { H.map.districts(c); if (S.lab.traffic) H.map.traffic(c, cfg.depart, cfg.cond); D.ZONES.forEach(() => 0); Object.values(D.districts).forEach((p) => p.forEach((x) => c.bounds.extend(x))); } }) +
-        `<div class="map-empty">${U.empty('Sin visitas para esta cuadrilla y día', 'Asigna citas en la Agenda o elige «Escenario ampliado: 12 viviendas» para ver la optimización completa.', 'route')}</div>`);
+        `<div class="map-empty">${U.empty('Sin visitas para esta cuadrilla y día', 'Asigna citas en la Agenda o elige «Escenario ampliado: 12 viviendas» para ver la optimización completa.', 'route')}</div>`) + evalCard(L, EV, null, null);
     }
     const legsAll = opt.legs.map((l) => ({ from: l.from, to: l.stop.n, depart: l.depart, travel: l.travel, km: l.km, name: l.stop.label }))
       .concat([{ from: opt.endLeg.from, to: opt.endLeg.to, depart: opt.endLeg.depart, travel: opt.endLeg.travel, km: opt.endLeg.km, name: placeName(opt.endLeg.to) || 'Punto B' }]);
@@ -184,7 +220,7 @@
     if (alts && L.alt >= alts.length) L.alt = 0;
     const mapTime = focus ? focus.depart : cfg.depart;
     const done = new Set(stops.filter((s) => s.a && ['Realizada', 'Cliente ausente'].includes(s.a.status)).map((s) => s.id));
-    const sig = [S.contractor, L.scenario, L.day, L.crew, cfg.start, cfg.end, L.leg].join('|');
+    const sig = [S.contractor, L.scenario, L.day, L.crew, cfg.start, cfg.end, L.leg, EV.v && EV.v.ok ? EV.a.id + L.evalSlot : ''].join('|');
     const save = (a, b, unit = '') => { const d = b - a; return Math.abs(d) < 0.5 ? '<span class="muted small">igual que sin optimizar</span>' : d > 0 ? `<span class="text-green small">${Math.round(d * 10) / 10}${unit} menos que sin optimizar</span>` : `<span class="text-amber small">${Math.round(-d * 10) / 10}${unit} más (gana en puntualidad)</span>`; };
 
     const mapHtml = H.map.slot('lab', {
@@ -192,7 +228,7 @@
       draw: (c) => {
         H.map.districts(c);
         if (S.lab.traffic) H.map.traffic(c, mapTime, cfg.cond);
-        H.map.route(c, o, opt, cfg.cond, { focusLeg: L.leg, doneIds: done, onLeg: (i) => H.run(() => { S.lab.leg = i; S.lab.alt = 0; }) });
+        H.map.route(c, o, opt, cfg.cond, { focusLeg: L.leg, doneIds: done, newId: EV.v && EV.v.ok ? EV.a.id : null, onLeg: (i) => H.run(() => { S.lab.leg = i; S.lab.alt = 0; }) });
         if (alts) H.map.alts(c, alts, L.alt, (i) => H.run(() => { S.lab.alt = i; }));
       }
     });
@@ -208,6 +244,7 @@
     </div>
     ${mapCard('lab', 'Mapa de la ruta', mapTime, mapHtml, { anim: true, alt: !!alts })}
     <p class="muted small map-hint">${icon('info')}Toca una parada para ver sus datos, una línea para elegir ese tramo o «Simular recorrido» para ver al motorizado avanzar por las calles con la hora estimada.</p>
+    ${evalCard(L, EV, current, opt)}
     <div class="route-layout">
       <section class="card itinerary">
         <h2 class="card-title">${icon('route')}Itinerario optimizado</h2>
@@ -249,7 +286,7 @@
       draw: (c) => {
         H.map.districts(c);
         if (S.lab.traffic) H.map.traffic(c, cfg.depart, cfg.cond);
-        routes.forEach((x, i) => { if (x.stops.length) H.map.route(c, o, x.r, cfg.cond, { color: H.map.CREW_COLORS[i], tips: false, onLeg: () => H.run(() => { S.lab.view = 'una'; S.lab.crew = x.crew; S.lab.scenario = 'hub'; S.lab.leg = null; }) }); });
+        routes.forEach((x, i) => { if (x.stops.length) H.map.route(c, o, x.r, cfg.cond, { color: H.map.CREW_COLORS[i], pinColor: H.map.CREW_COLORS[i], tips: false, onLeg: () => H.run(() => { S.lab.view = 'una'; S.lab.crew = x.crew; S.lab.scenario = 'hub'; S.lab.leg = null; }) }); });
         if (!any) Object.values(D.districts).forEach((p) => p.forEach((q) => c.bounds.extend(q)));
       }
     });
@@ -287,4 +324,13 @@
   H.change.labCond = (v, d) => { st.routeCfg[S.contractor].cond[d.k] = v; };
   H.act.labLeg = (d) => { const i = +d.i; S.lab.leg = S.lab.leg === i ? null : i; S.lab.alt = 0; };
   H.act.labAlt = (d) => { S.lab.alt = +d.i; };
+  H.change.evalId = (v) => { S.lab.evalId = v || null; S.lab.leg = null; };
+  H.change.evalSlot = (v) => { S.lab.evalSlot = v || null; S.lab.leg = null; };
+  H.act.evalClear = () => { S.lab.evalId = null; S.lab.evalSlot = null; };
+  H.act.evalApply = () => {
+    const L = S.lab, a = st.find(L.evalId);
+    A.reprogramToCrew(L.evalId, L.day, L.evalSlot, L.crew);
+    U.toast(a.name + ' reprogramada a ' + U.dayLabel(L.day) + ' · ' + L.evalSlot + ' (Cuadrilla ' + L.crew + '). Se avisó al cliente por WhatsApp.');
+    L.evalId = null; L.evalSlot = null;
+  };
 })();
