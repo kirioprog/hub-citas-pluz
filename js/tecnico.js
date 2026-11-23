@@ -48,9 +48,12 @@
     if (!r.legs.length) return U.empty('Sin ruta para hoy', 'No tienes visitas asignadas.', 'map');
     const cfg = st.routeCfg[S.tech.contractor];
     const done = new Set(r.legs.filter((l) => DONE.includes(l.stop.a.status)).map((l) => l.stop.id));
-    return `<div class="map-box tech-map">${H.map.svg({ opts: o, result: r, time: cfg.depart, cond: cfg.cond, doneIds: done, compact: true, title: 'Mapa de la ruta de hoy' })}</div>
-      ${H.map.legend(false)}
-      <p class="muted small">Mapa esquemático de ejemplo (no es un mapa real).</p>
+    const T = S.tech;
+    const map = H.map.slot('tech', { height: '60vh', label: 'Mapa de la ruta de hoy', sig: ['tech', T.contractor, T.crew, r.legs.map((l) => l.stop.id).join(','), cfg.start, cfg.end].join('|'),
+      draw: (c) => { H.map.route(c, o, r, cfg.cond, { doneIds: done }); } });
+    return `<div class="tech-map-wrap">${map}</div>
+      ${btn('Simular mi recorrido', 'mapAnim', { data: { key: 'tech' }, cls: 'btn-primary btn-block', icon: 'play' })}
+      ${H.map.legend({ traffic: false })}
       <ol class="eta-list">
         <li><span class="itin-mark">A</span>${D.PLACES[cfg.start].label} · salida ${st.hm(cfg.depart)}</li>
         ${r.legs.map((l, i) => `<li><span class="itin-num">${i + 1}</span><button class="link-btn" data-act="techOpen" data-id="${l.stop.id}">${esc(l.stop.a.address)}</button> · ${l.stop.slot} · llega ${st.hm(l.arrive)}</li>`).join('')}
@@ -66,12 +69,21 @@
     let how = '';
     if (T.howto) {
       const alts = R.alternatives(l.from, l.stop.n, l.depart, cfg.cond);
-      const fromName = Object.values(D.PLACES).find((p) => D.idx[p.node] === l.from);
+      const fromName = Object.values(D.PLACES).find((p) => p.node === l.from);
+      const dirs = alts[T.alt] ? R.directions(alts[T.alt].steps) : [];
+      const map = H.map.slot('tech-how', { height: '46vh', label: 'Cómo llegar a ' + a.address, sig: ['how', a.id, l.from].join('|'),
+        draw: (c) => {
+          H.map.alts(c, alts, T.alt, (k) => H.run(() => { T.alt = k; }));
+          H.map.pin(c, H.map.ll(l.from), fromName ? 'A' : '●', 'pin-ab', { tip: fromName ? fromName.label : 'Visita anterior', z: 600 });
+          H.map.pin(c, H.map.ll(l.stop.n), String(i + 1), 'pin-stop is-focus', { tip: a.address, z: 700 });
+        } });
       how = `<section class="howto" aria-label="Cómo llegar">
         <h2 class="sub-title">${icon('nav')}Cómo llegar <span class="tag tag-gray">Simulado</span></h2>
         <p class="small muted">Desde ${fromName ? esc(fromName.label) : 'la visita anterior'} · salida ${st.hm(l.depart)} · tráfico estimado a esa hora.</p>
-        <div class="map-box tech-map">${H.map.svg({ opts: null, result: null, time: l.depart, cond: cfg.cond, alts, altSel: T.alt, compact: true, title: 'Rutas para llegar a ' + a.address })}</div>
-        <div class="alt-list">${alts.map((p, k) => `<button class="alt ${T.alt === k ? 'is-on' : ''}" data-act="techAlt" data-i="${k}" aria-pressed="${T.alt === k}"><span class="alt-swatch" style="background:${H.map.ALT[k % 3]}" aria-hidden="true"></span><span class="alt-main"><strong>${k === 0 ? 'Más rápida' : 'Alternativa ' + k} · ${Math.round(p.minutes)} min</strong><span class="small">${p.km.toFixed(1)} km · vía ${esc(p.via.join(' y '))}</span></span><span class="alt-side">${tag(p.level.label, p.level.key === 'fluido' ? 'green' : p.level.key === 'moderado' ? 'amber' : 'red')}</span></button>`).join('')}</div>
+        <div class="tech-map-wrap">${map}</div>
+        <div class="alt-list">${alts.map((p, k) => `<button class="alt ${T.alt === k ? 'is-on' : ''}" data-act="techAlt" data-i="${k}" aria-pressed="${T.alt === k}"><span class="alt-swatch" style="background:${H.map.ALT[k % 3]}" aria-hidden="true"></span><span class="alt-main"><strong>${k === 0 ? 'Más rápida' : 'Alternativa ' + k} · ${Math.round(p.minutes)} min</strong><span class="small">${p.km.toFixed(1)} km · por ${esc(p.via.join(' y '))}</span></span><span class="alt-side">${tag(p.level.label, p.level.key === 'fluido' ? 'green' : p.level.key === 'moderado' ? 'amber' : 'red')}</span></button>`).join('')}</div>
+        <h3 class="sub-title">${icon('nav')}Indicaciones</h3>
+        <ol class="dirs">${dirs.map((d) => `<li>${icon(d.icon)}<span>${esc(d.text)}</span>${d.m ? `<span class="muted small">${d.m >= 1000 ? (d.m / 1000).toFixed(1) + ' km' : Math.round(d.m / 10) * 10 + ' m'}</span>` : ''}</li>`).join('')}</ol>
       </section>`;
     }
     return `<button class="btn btn-ghost btn-sm back-btn" data-act="techBack">${icon('back')}<span>Volver a la ruta</span></button>

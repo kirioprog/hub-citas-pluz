@@ -112,97 +112,171 @@
         ${btn('Ver ruta en el mapa', 'toRoute', { data: { crew: c }, cls: 'btn-ghost btn-sm', icon: 'map' })}</section>`;
     }).join('')}</div>`;
   }
-  H.act.toRoute = (d) => { S.lab.crew = d.crew; S.lab.day = S.agendaDay; S.lab.scenario = 'hub'; S.lab.leg = null; S.page.contratista = 'rutas'; window.scrollTo(0, 0); };
+  H.act.toRoute = (d) => { S.lab.crew = d.crew; if (S.page.contratista !== 'rutas') S.lab.day = S.agendaDay; S.lab.scenario = 'hub'; S.lab.view = 'una'; S.lab.leg = null; S.mapFull = null; S.page.contratista = 'rutas'; window.scrollTo(0, 0); };
 
-  /* ---------- Rutas: optimización sobre grafos ---------- */
-  const TIMES = []; for (let m = 420; m <= 570; m += 15) TIMES.push([String(m), st.hm(m)]);
-  function labStops() {
+  /* ---------- Rutas: optimización sobre la red vial real ---------- */
+  const TIMES = []; for (let m = 420; m <= 600; m += 15) TIMES.push([String(m), st.hm(m)]);
+  function labStops(crew) {
     const L = S.lab;
-    if (L.scenario === 'ampliado') return D.LAB.map(([label, node, slot], i) => ({ id: 'lab' + i, n: D.idx[node], win: D.slotWindow(slot), label, slot }));
-    return st.crewStops(S.contractor, L.crew, L.day);
+    if (L.scenario === 'ampliado') return D.LAB.map(([label, node, slot, address, zone], i) => ({ id: 'lab' + i, n: node, win: D.slotWindow(slot), label, slot, address: address + ', ' + zone }));
+    return st.crewStops(S.contractor, crew || L.crew, L.day);
   }
+  const placeName = (n) => { const p = Object.values(D.PLACES).find((x) => x.node === n); return p ? p.label : null; };
+  const lvTag = (lv) => tag('Tráfico ' + lv.label.toLowerCase(), lv.key === 'fluido' ? 'green' : lv.key === 'moderado' ? 'amber' : 'red');
+
   function rutas() {
     const L = S.lab, cfg = st.routeCfg[S.contractor], o = st.options(S.contractor);
+    const places = Object.entries(D.PLACES).map(([k, p]) => [k, p.label + ' · ' + p.address + ' (' + p.zone + ')']);
+    const controls = `
+    <div class="card route-controls">
+      <div class="seg seg-inline" role="tablist" aria-label="Vista de rutas">
+        <button role="tab" class="seg-btn ${L.view === 'una' ? 'is-on' : ''}" aria-selected="${L.view === 'una'}" data-act="labView" data-v="una">${icon('route')}Una cuadrilla</button>
+        <button role="tab" class="seg-btn ${L.view === 'todas' ? 'is-on' : ''}" aria-selected="${L.view === 'todas'}" data-act="labView" data-v="todas">${icon('team')}Todas las cuadrillas</button>
+      </div>
+      ${L.view === 'una' ? field('Escenario', select('labScenario', [['hub', 'Citas del hub (cuadrilla y día)'], ['ampliado', 'Escenario ampliado: 12 viviendas']], L.scenario, { id: 'lab-sc', label: 'Escenario' })) : ''}
+      ${L.view === 'todas' || L.scenario === 'hub' ? field('Día', select('labDay', workdays().map((d) => [d, U.dayLabel(d)]), L.day, { id: 'lab-day', label: 'Día' })) : ''}
+      ${L.view === 'una' && L.scenario === 'hub' ? field('Cuadrilla', select('labCrew', D.CREWS.map((c) => [c, 'Cuadrilla ' + c]), L.crew, { id: 'lab-crew', label: 'Cuadrilla' })) : ''}
+      ${field('Punto A (salida)', select('labStart', places, cfg.start, { id: 'lab-a', label: 'Punto A' }))}
+      ${field('Punto B (llegada)', select('labEnd', places, cfg.end, { id: 'lab-b', label: 'Punto B' }))}
+      ${field('Hora de salida', select('labDepart', TIMES, String(cfg.depart), { id: 'lab-dep', label: 'Hora de salida' }))}
+      ${field('Tiempo por visita', select('labService', [['20', '20 min'], ['30', '30 min'], ['45', '45 min']], String(cfg.service), { id: 'lab-svc', label: 'Tiempo por visita' }))}
+      <fieldset class="field cond-set"><legend class="field-label">Condiciones del tráfico (cambian la ruta al instante)</legend>
+        <label class="check"><input type="checkbox" data-change="labCond" data-k="lluvia" ${cfg.cond.lluvia ? 'checked' : ''}><span>Lluvia (+20 % en todas las vías)</span></label>
+        ${D.INCIDENTS.map((i) => `<label class="check"><input type="checkbox" data-change="labCond" data-k="${i.id}" ${cfg.cond[i.id] ? 'checked' : ''}><span>${i.label}</span></label>`).join('')}
+      </fieldset>
+    </div>`;
+    const header = head('Rutas', 'Mapa real de Santa Anita, Ate y La Molina. El motorizado sale del punto A, visita cada vivienda dentro de su franja y termina en el punto B, por las calles reales y con el tráfico de cada hora.');
+    return header + controls + (L.view === 'todas' ? allCrews(o, cfg) : oneCrew(o, cfg));
+  }
+
+  function mapCard(key, title, mapTime, body, opts = {}) {
+    const full = S.mapFull === key;
+    return `<section class="card map-card ${full ? 'is-full' : ''}">
+      <div class="map-head">
+        <h2 class="card-title">${icon('map')}${title}</h2>
+        <div class="btn-row">
+          <span class="tag tag-gray">Tráfico estimado a las ${st.hm(mapTime)}</span>
+          ${opts.anim ? btn('Simular recorrido', 'mapAnim', { data: { key }, cls: 'btn-primary btn-sm', icon: 'play' }) : ''}
+          ${btn(S.lab.traffic ? 'Ocultar tráfico' : 'Ver tráfico', 'labTraffic', { cls: 'btn-ghost btn-sm', icon: 'eye' })}
+          ${btn(full ? 'Salir de pantalla completa' : 'Pantalla completa', 'mapFull', { data: { key }, cls: 'btn-ghost btn-sm', icon: full ? 'x' : 'expand' })}
+        </div>
+      </div>
+      ${body}
+      ${H.map.legend({ traffic: S.lab.traffic, alt: opts.alt, crews: opts.crews })}
+    </section>`;
+  }
+
+  function oneCrew(o, cfg) {
+    const L = S.lab;
     const stops = labStops();
     const t0 = performance.now();
     const opt = R.optimize(stops, o);
     const ms = performance.now() - t0;
     const base = R.baseline(stops, o);
-    const legsAll = opt.legs.map((l) => ({ from: l.from, to: l.stop.n, depart: l.depart, travel: l.travel, km: l.km })).concat([{ from: opt.endLeg.from, to: opt.endLeg.to, depart: opt.endLeg.depart, travel: opt.endLeg.travel, km: opt.endLeg.km }]);
+    if (!stops.length) {
+      return mapCard('lab', 'Mapa', cfg.depart, H.map.slot('lab', { height: '62vh', label: 'Mapa sin visitas', sig: 'empty', draw: (c) => { H.map.districts(c); if (S.lab.traffic) H.map.traffic(c, cfg.depart, cfg.cond); D.ZONES.forEach(() => 0); Object.values(D.districts).forEach((p) => p.forEach((x) => c.bounds.extend(x))); } }) +
+        `<div class="map-empty">${U.empty('Sin visitas para esta cuadrilla y día', 'Asigna citas en la Agenda o elige «Escenario ampliado: 12 viviendas» para ver la optimización completa.', 'route')}</div>`);
+    }
+    const legsAll = opt.legs.map((l) => ({ from: l.from, to: l.stop.n, depart: l.depart, travel: l.travel, km: l.km, name: l.stop.label }))
+      .concat([{ from: opt.endLeg.from, to: opt.endLeg.to, depart: opt.endLeg.depart, travel: opt.endLeg.travel, km: opt.endLeg.km, name: placeName(opt.endLeg.to) || 'Punto B' }]);
     const focus = L.leg !== null && L.leg < legsAll.length ? legsAll[L.leg] : null;
     const alts = focus ? R.alternatives(focus.from, focus.to, focus.depart, cfg.cond) : null;
+    if (alts && L.alt >= alts.length) L.alt = 0;
     const mapTime = focus ? focus.depart : cfg.depart;
     const done = new Set(stops.filter((s) => s.a && ['Realizada', 'Cliente ausente'].includes(s.a.status)).map((s) => s.id));
-    const places = Object.entries(D.PLACES).map(([k, p]) => [k, p.label + ' (' + p.zone + ')']);
-    const save = (a, b, unit = '') => { const d = b - a; return Math.abs(d) < 0.5 ? '<span class="muted small">igual que sin optimizar</span>' : d > 0 ? `<span class="text-green small">${Math.round(d)}${unit} menos que sin optimizar</span>` : `<span class="text-amber small">${Math.round(-d)}${unit} más (gana en puntualidad)</span>`; };
-    const nodeName = (n) => { const p = Object.values(D.PLACES).find((x) => D.idx[x.node] === n); return p ? p.label : null; };
+    const sig = [S.contractor, L.scenario, L.day, L.crew, cfg.start, cfg.end, L.leg].join('|');
+    const save = (a, b, unit = '') => { const d = b - a; return Math.abs(d) < 0.5 ? '<span class="muted small">igual que sin optimizar</span>' : d > 0 ? `<span class="text-green small">${Math.round(d * 10) / 10}${unit} menos que sin optimizar</span>` : `<span class="text-amber small">${Math.round(-d * 10) / 10}${unit} más (gana en puntualidad)</span>`; };
 
-    return head('Rutas', 'El motorizado sale del punto A, visita cada vivienda dentro de su franja y termina en el punto B. Se recalcula con el tráfico de cada hora.') + `
-    <div class="card route-controls">
-      ${field('Escenario', select('labScenario', [['hub', 'Citas del hub (cuadrilla y día)'], ['ampliado', 'Escenario ampliado: 12 viviendas ficticias']], L.scenario, { id: 'lab-sc', label: 'Escenario' }))}
-      ${L.scenario === 'hub' ? field('Día', select('labDay', workdays().map((d) => [d, U.dayLabel(d)]), L.day, { id: 'lab-day', label: 'Día' })) + field('Cuadrilla', select('labCrew', D.CREWS.map((c) => [c, 'Cuadrilla ' + c]), L.crew, { id: 'lab-crew', label: 'Cuadrilla' })) : ''}
-      ${field('Punto A (salida)', select('labStart', places, cfg.start, { id: 'lab-a', label: 'Punto A' }))}
-      ${field('Punto B (llegada)', select('labEnd', places, cfg.end, { id: 'lab-b', label: 'Punto B' }))}
-      ${field('Hora de salida', select('labDepart', TIMES, String(cfg.depart), { id: 'lab-dep', label: 'Hora de salida' }))}
-      ${field('Tiempo por visita', select('labService', [['20', '20 min'], ['30', '30 min'], ['45', '45 min']], String(cfg.service), { id: 'lab-svc', label: 'Tiempo por visita' }))}
-      <fieldset class="field cond-set"><legend class="field-label">Condiciones del tráfico</legend>
-        <label class="check"><input type="checkbox" data-change="labCond" data-k="lluvia" ${cfg.cond.lluvia ? 'checked' : ''}><span>Lluvia (+20 % en todas las vías)</span></label>
-        ${D.INCIDENTS.map((i) => `<label class="check"><input type="checkbox" data-change="labCond" data-k="${i.id}" ${cfg.cond[i.id] ? 'checked' : ''}><span>${i.label}</span></label>`).join('')}
-      </fieldset>
-    </div>
-    ${!stops.length ? `<div class="card">${U.empty('Sin visitas para esta cuadrilla y día', 'Asigna citas en la Agenda o usa el escenario ampliado para ver la optimización con 12 viviendas.', 'route')}</div>` : `
+    const mapHtml = H.map.slot('lab', {
+      height: S.mapFull === 'lab' ? 'calc(100vh - 150px)' : '70vh', label: 'Mapa de la ruta optimizada', sig,
+      draw: (c) => {
+        H.map.districts(c);
+        if (S.lab.traffic) H.map.traffic(c, mapTime, cfg.cond);
+        H.map.route(c, o, opt, cfg.cond, { focusLeg: L.leg, doneIds: done, onLeg: (i) => H.run(() => { S.lab.leg = i; S.lab.alt = 0; }) });
+        if (alts) H.map.alts(c, alts, L.alt, (i) => H.run(() => { S.lab.alt = i; }));
+      }
+    });
+
+    const dirs = alts && alts[L.alt] ? R.directions(alts[L.alt].steps) : null;
+    return `
     <div class="metric-grid">
+      <div class="card metric"><span class="metric-label">Visitas en la ruta</span><span class="metric-num">${opt.legs.length}</span><span class="muted small">calculado en ${ms < 1 ? '<1' : Math.round(ms)} ms</span></div>
       <div class="card metric"><span class="metric-label">Tiempo de manejo</span><span class="metric-num">${Math.round(opt.travel)} min</span>${save(opt.travel, base.travel, ' min')}</div>
       <div class="card metric"><span class="metric-label">Distancia</span><span class="metric-num">${opt.km.toFixed(1)} km</span>${save(opt.km, base.km, ' km')}</div>
-      <div class="card metric"><span class="metric-label">Llegada al punto B</span><span class="metric-num">${st.hm(opt.finish)}</span><span class="muted small">sin optimizar: ${st.hm(base.finish)}</span></div>
-      <div class="card metric"><span class="metric-label">Visitas fuera de franja</span><span class="metric-num">${opt.lateCount}</span><span class="muted small">sin optimizar: ${base.lateCount}</span></div>
+      <div class="card metric"><span class="metric-label">Llega al punto B</span><span class="metric-num">${st.hm(opt.finish)}</span><span class="muted small">sin optimizar: ${st.hm(base.finish)}</span></div>
+      <div class="card metric"><span class="metric-label">Fuera de franja</span><span class="metric-num ${opt.lateCount ? 'text-red' : ''}">${opt.lateCount}</span><span class="muted small">sin optimizar: ${base.lateCount}</span></div>
     </div>
+    ${mapCard('lab', 'Mapa de la ruta', mapTime, mapHtml, { anim: true, alt: !!alts })}
+    <p class="muted small map-hint">${icon('info')}Toca una parada para ver sus datos, una línea para elegir ese tramo o «Simular recorrido» para ver al motorizado avanzar por las calles con la hora estimada.</p>
     <div class="route-layout">
-      <section class="card map-card">
-        <div class="map-head"><h2 class="card-title">${icon('map')}Mapa de la ruta</h2><span class="tag tag-gray">Mapa esquemático de ejemplo · tráfico a las ${st.hm(mapTime)}</span></div>
-        <div class="map-box">${H.map.svg({ opts: o, result: opt, time: mapTime, cond: cfg.cond, focusLeg: L.leg, alts, altSel: L.alt, doneIds: done, title: 'Ruta optimizada de ' + opt.legs.length + ' visitas' })}</div>
-        ${H.map.legend(!!alts)}
-      </section>
       <section class="card itinerary">
         <h2 class="card-title">${icon('route')}Itinerario optimizado</h2>
-        <p class="muted small">Toca un tramo para ver las rutas alternativas con tráfico.</p>
+        <p class="muted small">Toca un tramo para ver en el mapa las rutas alternativas y las indicaciones.</p>
         <ol class="itin">
-          <li class="itin-ab"><span class="itin-mark">A</span><div><strong>${D.PLACES[cfg.start].label}</strong><p class="muted small">Salida ${st.hm(cfg.depart)}</p></div></li>
+          <li class="itin-ab"><span class="itin-mark">A</span><div><strong>${D.PLACES[cfg.start].label}</strong><p class="muted small">${D.PLACES[cfg.start].address}, ${D.PLACES[cfg.start].zone} · salida ${st.hm(cfg.depart)}</p></div></li>
           ${legsAll.map((lg, i) => {
             const isEnd = i === opt.legs.length, l = opt.legs[i];
             return `<li><button class="itin-leg ${L.leg === i ? 'is-on' : ''}" data-act="labLeg" data-i="${i}" aria-pressed="${L.leg === i}">${icon('nav')}<span>Tramo ${i + 1}: ${Math.round(lg.travel)} min · ${lg.km.toFixed(1)} km</span>${icon('chevron')}</button></li>
-            ${isEnd ? `<li class="itin-ab"><span class="itin-mark">B</span><div><strong>${D.PLACES[cfg.end].label}</strong><p class="muted small">Llegada ${st.hm(opt.finish)}</p></div></li>` :
-              `<li class="itin-stop ${done.has(l.stop.id) ? 'is-done' : ''}"><span class="itin-num">${i + 1}</span><div><strong>${esc(l.stop.label)}</strong> ${l.stop.a ? chip(l.stop.a.status) : ''}
-                <p class="small">Franja ${l.stop.slot} · llega ${st.hm(l.arrive)}${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''} · atención ${st.hm(l.start)}–${st.hm(l.finish)}</p>
-                ${l.late > 0.5 ? `<p class="small text-red">${icon('alert')}Llega ${Math.round(l.late)} min tarde a su franja</p>` : ''}
-                ${l.stop.a ? `<p class="muted small">${esc(l.stop.a.address)}, ${l.stop.a.zone}</p>` : ''}</div></li>`}`;
+            ${isEnd ? `<li class="itin-ab"><span class="itin-mark itin-b">B</span><div><strong>${D.PLACES[cfg.end].label}</strong><p class="muted small">${D.PLACES[cfg.end].address}, ${D.PLACES[cfg.end].zone} · llegada ${st.hm(opt.finish)}</p></div></li>` :
+              `<li class="itin-stop ${done.has(l.stop.id) ? 'is-done' : ''}"><span class="itin-num ${l.late > 0.5 ? 'is-late' : ''}">${i + 1}</span><div><strong>${esc(l.stop.label)}</strong> ${l.stop.a ? chip(l.stop.a.status) : ''}
+                <p class="muted small">${l.stop.a ? esc(l.stop.a.address) + ', ' + l.stop.a.zone : esc(l.stop.address || '')}</p>
+                <p class="small">Franja ${l.stop.slot} · llega <strong>${st.hm(l.arrive)}</strong>${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''} · atención ${st.hm(l.start)}–${st.hm(l.finish)}</p>
+                ${l.late > 0.5 ? `<p class="small text-red">${icon('alert')}Llega ${Math.round(l.late)} min tarde a su franja</p>` : ''}</div></li>`}`;
           }).join('')}
         </ol>
       </section>
+      <section class="card alts">
+        ${focus ? `<div class="map-head"><h2 class="card-title">${icon('layers')}Tramo ${L.leg + 1}: rutas para el mismo destino</h2>${btn('Cerrar', 'labLeg', { data: { i: L.leg }, cls: 'btn-ghost btn-sm', icon: 'x' })}</div>
+          <p class="muted small">De ${esc(placeName(focus.from) || (opt.legs[L.leg - 1] ? opt.legs[L.leg - 1].stop.label : 'la parada anterior'))} a ${esc(focus.name)}, saliendo a las ${st.hm(focus.depart)}. Se comparan caminos distintos con el tráfico de esa hora y se elige el más rápido.</p>
+          <div class="alt-list">${alts.map((p, i) => `<button class="alt ${L.alt === i ? 'is-on' : ''}" data-act="labAlt" data-i="${i}" aria-pressed="${L.alt === i}">
+            <span class="alt-swatch" style="background:${H.map.ALT[i % 3]}" aria-hidden="true"></span>
+            <span class="alt-main"><strong>${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min</strong><span class="small">${p.km.toFixed(1)} km · por ${esc(p.via.join(' y '))}</span></span>
+            <span class="alt-side">${lvTag(p.level)}${i ? `<span class="small muted">+${Math.round(p.minutes - alts[0].minutes)} min</span>` : ''}</span></button>`).join('')}</div>
+          ${dirs ? `<h3 class="sub-title">${icon('nav')}Indicaciones · ${L.alt === 0 ? 'recomendada' : 'alternativa ' + L.alt}</h3><ol class="dirs">${dirs.map((d) => `<li>${icon(d.icon)}<span>${esc(d.text)}</span>${d.m ? `<span class="muted small">${d.m >= 1000 ? (d.m / 1000).toFixed(1) + ' km' : Math.round(d.m / 10) * 10 + ' m'}</span>` : ''}</li>`).join('')}</ol>` : ''}`
+        : `<h2 class="card-title">${icon('layers')}Rutas alternativas</h2>${U.empty('Elige un tramo', 'Toca un tramo del itinerario o una línea del mapa para comparar caminos y ver las indicaciones giro a giro.', 'nav')}`}
+      </section>
     </div>
-    ${focus ? `<section class="card alts">
-      <div class="map-head"><h2 class="card-title">${icon('layers')}Rutas alternativas · Tramo ${L.leg + 1}</h2>${btn('Cerrar', 'labLeg', { data: { i: L.leg }, cls: 'btn-ghost btn-sm', icon: 'x' })}</div>
-      <p class="muted small">Desde ${esc(nodeName(focus.from) || 'la parada anterior')} hacia ${esc(nodeName(focus.to) || (opt.legs[L.leg] ? opt.legs[L.leg].stop.label : ''))}, saliendo a las ${st.hm(focus.depart)}. Mismo destino, distintos caminos: se elige el más rápido con el tráfico estimado a esa hora.</p>
-      <div class="alt-list">${alts.map((p, i) => `<button class="alt ${L.alt === i ? 'is-on' : ''}" data-act="labAlt" data-i="${i}" aria-pressed="${L.alt === i}">
-        <span class="alt-swatch" style="background:${H.map.ALT[i % 3]}" aria-hidden="true"></span>
-        <span class="alt-main"><strong>${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min</strong><span class="small">${p.km.toFixed(1)} km · vía ${esc(p.via.join(' y '))}</span></span>
-        <span class="alt-side">${tag('Tráfico ' + p.level.label.toLowerCase(), p.level.key === 'fluido' ? 'green' : p.level.key === 'moderado' ? 'amber' : 'red')}${i ? `<span class="small muted">+${Math.round(p.minutes - alts[0].minutes)} min</span>` : ''}</span>
-      </button>`).join('')}</div>
-    </section>` : ''}`}
-    <details class="card method">
-      <summary>${icon('info')}Cómo se calcula la ruta</summary>
+    ${method(ms, stops.length)}`;
+  }
+
+  function allCrews(o, cfg) {
+    const L = S.lab;
+    const routes = D.CREWS.map((c) => ({ crew: c, stops: labStops(c) })).map((x) => ({ ...x, r: R.optimize(x.stops, o) }));
+    const sig = ['todas', S.contractor, L.day, cfg.start, cfg.end].join('|');
+    const any = routes.some((x) => x.stops.length);
+    const mapHtml = H.map.slot('lab-all', {
+      height: S.mapFull === 'lab-all' ? 'calc(100vh - 150px)' : '70vh', label: 'Rutas de todas las cuadrillas', sig,
+      draw: (c) => {
+        H.map.districts(c);
+        if (S.lab.traffic) H.map.traffic(c, cfg.depart, cfg.cond);
+        routes.forEach((x, i) => { if (x.stops.length) H.map.route(c, o, x.r, cfg.cond, { color: H.map.CREW_COLORS[i], tips: false, onLeg: () => H.run(() => { S.lab.view = 'una'; S.lab.crew = x.crew; S.lab.scenario = 'hub'; S.lab.leg = null; }) }); });
+        if (!any) Object.values(D.districts).forEach((p) => p.forEach((q) => c.bounds.extend(q)));
+      }
+    });
+    return mapCard('lab-all', 'Rutas de todas las cuadrillas · ' + U.dayLabel(L.day), cfg.depart, mapHtml, { crews: D.CREWS.map((c) => 'Cuadrilla ' + c) }) +
+      `<div class="crew-grid">${routes.map((x, i) => `<section class="card crew-card"><h3 class="card-title"><span class="crew-dot" style="background:${H.map.CREW_COLORS[i]}"></span>Cuadrilla ${x.crew}</h3>
+        ${x.stops.length ? `<p><strong>${x.r.legs.length}</strong> visitas · ${Math.round(x.r.travel)} min · ${x.r.km.toFixed(1)} km</p><p class="muted small">Salida ${st.hm(cfg.depart)} · llega a B ${st.hm(x.r.finish)}</p><ol class="crew-order">${x.r.legs.map((l) => `<li>${esc(l.stop.label)} <span class="muted small">${l.stop.slot} · llega ${st.hm(l.arrive)}</span></li>`).join('')}</ol>` : '<p class="muted">Sin visitas asignadas.</p>'}
+        ${btn('Ver esta ruta', 'toRoute', { data: { crew: x.crew }, cls: 'btn-ghost btn-sm', icon: 'map' })}</section>`).join('')}</div>`;
+  }
+
+  function method(ms, n) {
+    return `<details class="card method">
+      <summary>${icon('info')}Cómo funciona el sistema de rutas</summary>
       <ul class="small">
-        <li><strong>Grafo vial:</strong> ${D.nodes.length} intersecciones y ${D.edges.length} tramos con tipo de vía (avenida, principal o calle) y distancia.</li>
-        <li><strong>Tráfico:</strong> el tiempo de cada tramo es su tiempo a flujo libre multiplicado por un factor que cambia con la hora (horas punta 7:00–9:00 y 17:30–19:30, y mediodía), el tipo de vía y eventos como lluvia, obras o ferias.</li>
-        <li><strong>Camino más rápido entre dos puntos:</strong> Dijkstra dependiente del tiempo (cada tramo se evalúa a la hora en que se recorre).</li>
-        <li><strong>Rutas alternativas:</strong> algoritmo de Yen (k caminos más cortos), descartando las que comparten más del 70 % de los tramos.</li>
-        <li><strong>Orden de visitas de A a B:</strong> programación dinámica (Held–Karp) con ventanas horarias: primero minimiza minutos fuera de franja, luego la hora de llegada a B y el tiempo de manejo. Calculado en ${ms.toFixed(1)} ms para ${stops.length} visitas.</li>
-        <li><strong>Reprogramaciones:</strong> antes de aceptar un horario se inserta la visita en la ruta y se verifica que nadie llegue tarde. En el día 4 solo se acepta si cae dentro del recorrido ya programado y el desvío no supera 25 min.</li>
-        <li><strong>En producción:</strong> los tiempos por tramo se pueden obtener de un servicio con tráfico en tiempo real (por ejemplo, Google Routes API con matrices de rutas sensibles al tráfico) y el mapa real se dibujaría con Google Maps. Este prototipo no se conecta a ningún servicio externo.</li>
+        <li><strong>Calles reales:</strong> ${D.nodes.length.toLocaleString('es-PE')} intersecciones y ${D.edges.length.toLocaleString('es-PE')} tramos de Santa Anita, Ate y La Molina tomados de OpenStreetMap, con nombre, tipo de vía y sentido de circulación (se respetan las calles de un solo sentido).</li>
+        <li><strong>Tráfico:</strong> el tiempo de cada tramo es su tiempo a flujo libre multiplicado por un factor que cambia con la hora (horas punta 7:00–9:00 y 17:30–19:30, y mediodía), el tipo de vía (las avenidas se congestionan más que las calles) y eventos como lluvia, obras o accidentes.</li>
+        <li><strong>Camino más rápido entre dos puntos:</strong> Dijkstra dependiente del tiempo; cada tramo se evalúa a la hora en que el motorizado pasa por él.</li>
+        <li><strong>Rutas alternativas:</strong> tras encontrar la más rápida se encarecen sus tramos y se vuelve a buscar; se descartan las que repiten más del 72 % del recorrido.</li>
+        <li><strong>Orden de visitas de A a B:</strong> programación dinámica (Held–Karp) con ventanas horarias. Primero minimiza la llegada fuera de franja, luego la hora de llegada a B y luego el tiempo de manejo${ms != null ? ` (${n} visitas, ${Math.round(ms)} ms)` : ''}.</li>
+        <li><strong>Reprogramaciones:</strong> antes de aceptar un horario se inserta la visita en la ruta y se verifica que nadie llegue tarde. El día 4 solo se acepta si cae dentro del recorrido ya programado y el desvío no supera 25 min.</li>
+        <li><strong>En producción:</strong> los tiempos podrían venir de un servicio con tráfico en tiempo real (por ejemplo, Google Routes API). Aquí el tráfico es un modelo simulado; el mapa base es de OpenStreetMap y CARTO.</li>
       </ul>
     </details>`;
   }
+
   const cfgSet = (k, v) => { st.routeCfg[S.contractor][k] = v; S.lab.leg = null; };
+  H.act.labView = (d) => { S.lab.view = d.v; S.lab.leg = null; S.mapFull = null; };
+  H.act.labTraffic = () => { S.lab.traffic = !S.lab.traffic; };
   H.change.labScenario = (v) => { S.lab.scenario = v; S.lab.leg = null; };
   H.change.labDay = (v) => { S.lab.day = v; S.lab.leg = null; };
   H.change.labCrew = (v) => { S.lab.crew = v; S.lab.leg = null; };

@@ -12,11 +12,11 @@
     filters: { estado: '', zona: '', contratista: '', dia: '', q: '' },
     simId: 'FT-2026-1041', simRep: false,
     agendaDay: D.today, agendaZone: '', feed: 'todos',
-    lab: { day: D.today, crew: '1', scenario: 'hub', leg: null, alt: 0 },
+    lab: { day: D.today, crew: '1', scenario: 'hub', leg: null, alt: 0, view: 'una', traffic: true },
     modal: null,
     client: null, clientFrom: null, clientUi: { date: null, slot: null, rep: false },
     quick: { form: { name: '', phone: '', dni: '', zone: 'Ate', address: '0', contractor: '' }, results: null, sel: 0, created: null, errors: {} },
-    nav: false
+    nav: false, mapFull: null, pluzMapDay: D.today
   });
   H.act = {}; H.change = {}; H.views = {}; H.modals = {};
 
@@ -53,6 +53,7 @@
 
     document.querySelectorAll('[data-keep-scroll]').forEach((el) => { if (scrolls[el.dataset.keepScroll] != null) el.scrollTop = scrolls[el.dataset.keepScroll]; });
     document.querySelectorAll('[data-autoscroll]').forEach((el) => { el.scrollTop = el.scrollHeight; });
+    if (H.map && H.map.mountAll) H.map.mountAll();
     if (fid) {
       const el = document.getElementById(fid);
       if (el) { el.focus({ preventScroll: true }); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* no aplica */ } }
@@ -97,6 +98,7 @@
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (S.mapFull) { run(() => { S.mapFull = null; }); return; }
       if (S.modal) run(() => { S.modal = null; });
       else if (S.selected && S.role === 'pluz') run(() => { S.selected = null; });
       return;
@@ -135,6 +137,8 @@
     if (S.client) { S.client = null; history.replaceState(null, '', location.pathname + location.search); }
   };
   H.act.closeModal = () => { S.modal = null; };
+  H.act.mapFull = (d) => { S.mapFull = S.mapFull === d.key ? null : d.key; };
+  H.act.mapAnim = (d) => { H.map.animate(d.key); return false; };
   H.act.toggleNav = () => { S.nav = !S.nav; };
   H.act.go = (d) => {
     if (S.role === 'contratista' && S.page.contratista === 'cambios' && d.page !== 'cambios') st.lastSeen[S.contractor] = st.seq;

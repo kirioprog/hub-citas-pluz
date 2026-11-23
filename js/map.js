@@ -1,86 +1,200 @@
-/* Hub de citas · Mapa esquemático en SVG (no es un mapa real).
- * Dibuja la red vial del grafo coloreada por tráfico, la ruta optimizada,
- * las paradas numeradas, el punto de partida A, el punto final B y las rutas alternativas. */
+/* Hub de citas · Mapas interactivos (Leaflet + red vial real de OpenStreetMap).
+ * Cada mapa se crea una sola vez y se reubica en cada render, así conserva el zoom y los mosaicos.
+ * Dibuja: límites de distritos, tráfico por tramo, ruta optimizada con flechas de sentido, paradas
+ * numeradas con hora estimada, puntos A y B, rutas alternativas y la animación del motorizado. */
 (function () {
   const H = window.Hub, D = H.data, R = H.routing, U = H.ui;
-  const N = D.nodes;
-  const LV = { fluido: '#3f8f5b', moderado: '#c27c12', denso: '#c0392b' };
-  const ALT = ['#0F766E', '#6d4fc2', '#b4531b'];
+  const L = window.L;
+  const N = D.nodes, E = D.edges;
+  const LV = { fluido: '#2E8B57', moderado: '#D98E04', denso: '#C62828' };
+  const ALT = ['#0F766E', '#6D4FC2', '#C2410C'];
+  const CREW_COLORS = ['#0F766E', '#6D4FC2', '#C2410C'];
+  const ZONE_LABEL = { 'Santa Anita': [-12.0545, -76.9855], 'Ate': [-12.0195, -76.9555], 'La Molina': [-12.0975, -76.9235] };
+  const TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const ATTR = 'Mapa y calles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores de OpenStreetMap</a>';
 
-  const pts = (ids) => ids.map((i) => N[i].x + ',' + N[i].y).join(' ');
+  const entries = {}, pending = {};
+  const ll = (i) => [N[i].lat, N[i].lng];
+  const hm = (m) => H.store.hm(m);
+  const esc = U.esc;
 
-  function svg(o) {
-    const { opts, result, time = 480, cond = {}, focusLeg = null, alts = null, altSel = 0, compact = false, doneIds = new Set(), title = 'Mapa de ruta' } = o;
-    let s = `<svg class="map-svg" viewBox="0 0 980 620" role="img" aria-label="${U.esc(title)}"><title>${U.esc(title)}</title>`;
-    // Distritos
-    s += `<rect x="0" y="0" width="420" height="620" class="zone-sa"/><rect x="420" y="0" width="560" height="370" class="zone-ate"/><rect x="420" y="370" width="560" height="250" class="zone-lm"/>`;
-    s += `<text x="24" y="604" class="zone-label">SANTA ANITA</text><text x="956" y="30" text-anchor="end" class="zone-label">ATE</text><text x="956" y="604" text-anchor="end" class="zone-label">LA MOLINA</text>`;
-    // Red vial coloreada por tráfico a la hora indicada
-    for (const e of D.edges) {
-      const a = N[e.a], b = N[e.b], lv = R.edgeLevel(e, time, cond).key;
-      const w = e.type === 'avenida' ? 7 : e.type === 'principal' ? 5 : 3.5;
-      s += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="road" stroke-width="${w + 3}"/>`;
-      s += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${LV[lv]}" stroke-width="${w}" stroke-linecap="round" opacity=".55"><title>${U.esc(e.name)} · tráfico ${lv}</title></line>`;
-    }
-    if (!compact) {
-      const labels = [['Carretera Central', 0, 2], ['Av. Javier Prado Este', 2, 4], ['Av. La Molina', null, 4], ['Vía de Evitamiento', null, 2], ['Av. Raúl Ferrero', 4, 4]];
-      for (const [name, r, c] of labels) {
-        if (r === null) { const n1 = N[D.idx['n1' + c]], n2 = N[D.idx['n2' + c]]; s += `<text x="${n1.x + 9}" y="${(n1.y + n2.y) / 2 + 30}" class="road-label" transform="rotate(90 ${n1.x + 9} ${(n1.y + n2.y) / 2 + 30})">${name}</text>`; }
-        else { const n1 = N[D.idx['n' + r + c]]; s += `<text x="${n1.x + 12}" y="${n1.y - 9}" class="road-label">${name}</text>`; }
+  /* ---------- Montaje ---------- */
+  function slot(key, spec) {
+    pending[key] = spec;
+    return `<div class="lmap" data-lmap="${key}" style="height:${spec.height || '520px'}" role="region" aria-label="${esc(spec.label || 'Mapa')}"></div>`;
+  }
+  function mountAll() {
+    if (!L) return;
+    document.querySelectorAll('[data-lmap]').forEach((ph) => {
+      const key = ph.dataset.lmap, spec = pending[key];
+      if (!spec) return;
+      let en = entries[key];
+      if (!en) {
+        const div = document.createElement('div');
+        div.className = 'lmap-inner';
+        ph.appendChild(div);
+        const map = L.map(div, { preferCanvas: true, scrollWheelZoom: spec.wheel !== false, zoomSnap: 0.5 }).setView([-12.058, -76.945], 13);
+        const tiles = L.tileLayer(TILE, { maxZoom: 19, attribution: ATTR }).addTo(map);
+        // Sin conexión a los mosaicos: se dibuja la red vial propia como mapa base.
+        tiles.once('tileerror', () => {
+          const r = L.canvas({ padding: 0.3 }), base = L.layerGroup();
+          E.forEach((e) => L.polyline(edgeCoords(e), { renderer: r, color: e.cls <= 2 ? '#B9BDB5' : '#D6D8D2', weight: e.cls <= 1 ? 4 : e.cls <= 2 ? 3 : 1.5, interactive: false }).addTo(base));
+          base.addTo(map); base.eachLayer((l) => l.bringToBack && l.bringToBack());
+          div.classList.add('no-tiles');
+        });
+        L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+        en = entries[key] = { div, map, layer: L.layerGroup().addTo(map), sig: null };
+      } else {
+        ph.appendChild(en.div);
       }
-    }
-    for (const n of N) s += `<circle cx="${n.x}" cy="${n.y}" r="2.6" class="node"/>`;
-
-    // Rutas alternativas del tramo seleccionado
-    if (alts && alts.length) {
-      alts.forEach((p, i) => {
-        if (i === altSel) return;
-        s += `<polyline points="${pts(p.nodes)}" fill="none" stroke="${ALT[i % 3]}" stroke-width="6" stroke-dasharray="10 9" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`;
-      });
-      const p = alts[altSel];
-      if (p) s += `<polyline points="${pts(p.nodes)}" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${pts(p.nodes)}" fill="none" stroke="${ALT[altSel % 3]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`;
-      if (!result) {
-        const a = N[alts[0].nodes[0]], b = N[alts[0].nodes[alts[0].nodes.length - 1]];
-        s += `<g class="mk-ab"><rect x="${a.x - 15}" y="${a.y - 15}" width="30" height="30" rx="7"/><text x="${a.x}" y="${a.y + 5}" text-anchor="middle">●</text></g>`;
-        s += `<g class="mk-stop is-focus"><circle cx="${b.x}" cy="${b.y}" r="15"/><text x="${b.x}" y="${b.y + 5}" text-anchor="middle">★</text></g>`;
+      en.map.invalidateSize(false);
+      en.layer.clearLayers();
+      const ctx = { map: en.map, layer: en.layer, bounds: L.latLngBounds([]), en };
+      en.timeline = null;
+      spec.draw(ctx);
+      if (spec.sig !== en.sig) {
+        en.sig = spec.sig;
+        stopAnim(en);
+        if (ctx.bounds.isValid()) en.map.fitBounds(ctx.bounds, { padding: [36, 36], maxZoom: spec.maxZoom || 16 });
+      } else if (en.anim && en.timeline) {
+        en.anim.tl = en.timeline;
       }
-    }
-
-    // Ruta optimizada
-    if (result && opts) {
-      const legs = result.legs.map((l) => ({ from: l.from, to: l.stop.n, t: l.depart })).concat([{ from: result.endLeg.from, to: result.endLeg.to, t: result.endLeg.depart }]);
-      legs.forEach((l, i) => {
-        const p = R.pathNodes(l.from, l.to, l.t, cond);
-        if (p.length < 2) return;
-        const dim = (focusLeg !== null && focusLeg !== i) || (alts && alts.length);
-        s += `<polyline points="${pts(p)}" fill="none" stroke="#fff" stroke-width="${dim ? 7 : 11}" stroke-linecap="round" stroke-linejoin="round" opacity="${dim ? .6 : 1}"/>`;
-        s += `<polyline points="${pts(p)}" fill="none" stroke="#0F766E" stroke-width="${dim ? 3 : 6}" stroke-linecap="round" stroke-linejoin="round" opacity="${dim ? .45 : 1}" ${i === result.legs.length ? 'stroke-dasharray="2 9"' : ''}/>`;
-      });
-      const seen = {};
-      const off = (n) => { seen[n] = (seen[n] || 0) + 1; return (seen[n] - 1) * 16; };
-      const mark = (n, label, cls) => { const d = off(n), x = N[n].x + d, y = N[n].y - d; return `<g class="${cls}"><rect x="${x - 15}" y="${y - 15}" width="30" height="30" rx="7"/><text x="${x}" y="${y + 5}" text-anchor="middle">${label}</text></g>`; };
-      s += mark(opts.start, 'A', 'mk-ab');
-      result.legs.forEach((l, i) => {
-        const n = l.stop.n, d = off(n), x = N[n].x + d, y = N[n].y - d;
-        const done = doneIds.has(l.stop.id);
-        s += `<g class="mk-stop ${done ? 'is-done' : ''} ${focusLeg === i ? 'is-focus' : ''}"><circle cx="${x}" cy="${y}" r="15"/><text x="${x}" y="${y + 5}" text-anchor="middle">${i + 1}</text><title>${i + 1}. ${U.esc(l.stop.label)} · ${l.stop.slot || ''}</title></g>`;
-      });
-      s += mark(opts.end, 'B', 'mk-ab');
-    }
-    s += '</svg>';
-    return s;
+    });
+    for (const k in pending) delete pending[k];
   }
 
-  function legend(withAlt) {
+  /* ---------- Capas ---------- */
+  function districts(ctx) {
+    for (const [name, pts] of Object.entries(D.districts)) {
+      L.polygon(pts, { color: '#0F766E', weight: 2, opacity: 0.55, dashArray: '6 6', fillColor: '#0F766E', fillOpacity: 0.035, interactive: false }).addTo(ctx.layer);
+      L.marker(ZONE_LABEL[name], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'zone-tag', html: `<span>${name}</span>`, iconSize: null }) }).addTo(ctx.layer);
+    }
+  }
+  function edgeCoords(e) { return [ll(e.a)].concat(e.geom, [ll(e.b)]); }
+  function traffic(ctx, t, cond) {
+    const r = L.canvas({ padding: 0.3 });
+    E.forEach((e) => {
+      if (e.cls > 2) return;
+      const lv = R.edgeLevel(e, t, cond).key;
+      L.polyline(edgeCoords(e), { renderer: r, color: LV[lv], weight: e.cls === 0 ? 4 : e.cls === 1 ? 3.5 : 2.5, opacity: 0.55, interactive: false }).addTo(ctx.layer);
+    });
+  }
+
+  const dist = (p, q) => { const k = Math.cos((p[0] * Math.PI) / 180); return Math.hypot((q[0] - p[0]) * 111.32, (q[1] - p[1]) * 111.32 * k); };
+  const bearing = (p, q) => (Math.atan2((q[1] - p[1]) * Math.cos((p[0] * Math.PI) / 180), q[0] - p[0]) * 180) / Math.PI;
+  function arrows(ctx, coords, color, every = 0.45) {
+    let acc = every / 2;
+    for (let i = 1; i < coords.length; i++) {
+      const d = dist(coords[i - 1], coords[i]);
+      while (acc <= d) {
+        const f = acc / d, p = [coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * f, coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * f];
+        const b = bearing(coords[i - 1], coords[i]);
+        L.marker(p, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'arrow-ic', iconSize: [14, 14], html: `<svg viewBox="0 0 14 14" style="transform:rotate(${b}deg)"><path d="M7 1 12 12 7 9 2 12z" fill="${color}" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>` }) }).addTo(ctx.layer);
+        acc += every;
+      }
+      acc -= d;
+    }
+  }
+  function line(ctx, coords, color, o = {}) {
+    if (coords.length < 2) return;
+    L.polyline(coords, { color: '#fff', weight: (o.weight || 6) + 4, opacity: o.opacity ?? 1, interactive: false, lineJoin: 'round' }).addTo(ctx.layer);
+    const pl = L.polyline(coords, { color, weight: o.weight || 6, opacity: o.opacity ?? 1, dashArray: o.dash || null, lineJoin: 'round' }).addTo(ctx.layer);
+    if (o.tip) pl.bindTooltip(o.tip, { sticky: true });
+    if (o.onClick) pl.on('click', o.onClick);
+    if (o.fit !== false) coords.forEach((c) => ctx.bounds.extend(c));
+    if (o.arrows) arrows(ctx, coords, color);
+    return pl;
+  }
+  function pin(ctx, latlng, html, cls, o = {}) {
+    const m = L.marker(latlng, { icon: L.divIcon({ className: 'pin-wrap', html: `<div class="pin ${cls}">${html}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: o.z || 0, keyboard: !!o.popup, title: o.title || '' }).addTo(ctx.layer);
+    if (o.popup) m.bindPopup(o.popup, { maxWidth: 260 });
+    if (o.tip) m.bindTooltip(o.tip, { permanent: true, direction: 'right', offset: [16, 0], className: 'pin-tip' });
+    ctx.bounds.extend(latlng);
+    return m;
+  }
+
+  /* Ruta optimizada completa */
+  function route(ctx, o, res, cond, x = {}) {
+    const color = x.color || '#0F766E';
+    const legs = res.legs.map((l) => ({ from: l.from, to: l.stop.n, t: l.depart, a: l.depart, b: l.arrive, label: 'Hacia ' + l.stop.label }))
+      .concat([{ from: res.endLeg.from, to: res.endLeg.to, t: res.endLeg.depart, a: res.endLeg.depart, b: res.endLeg.arrive, label: 'Regreso al punto B' }]);
+    const tl = { t0: o.depart, t1: res.finish, segs: [], stays: [] };
+    legs.forEach((lg, i) => {
+      const coords = R.pathCoords(lg.from, lg.to, lg.t, cond);
+      const focus = x.focusLeg == null || x.focusLeg === i;
+      line(ctx, coords, color, { weight: focus && x.focusLeg != null ? 9 : 7, opacity: focus ? 1 : 0.35, arrows: focus, tip: `Tramo ${i + 1} · ${Math.round(lg.b - lg.a)} min`, onClick: x.onLeg ? () => x.onLeg(i) : null, fit: x.focusLeg == null || focus });
+      tl.segs.push({ a: lg.a, b: lg.b, coords, label: lg.label });
+    });
+    res.legs.forEach((l, i) => {
+      const done = x.doneIds && x.doneIds.has(l.stop.id);
+      const a = l.stop.a;
+      const pop = `<div class="pop"><p class="pop-k">Parada ${i + 1}${a ? ' · ' + esc(a.id) : ''}</p><p class="pop-t">${esc(l.stop.label)}</p>${a ? `<p>${esc(a.address)}, ${a.zone}</p>` : l.stop.address ? `<p>${esc(l.stop.address)}</p>` : ''}<p>Franja <b>${l.stop.slot}</b></p><p>Llega ${hm(l.arrive)}${l.wait > 0.5 ? ` · espera ${Math.round(l.wait)} min` : ''}</p><p>Atención ${hm(l.start)}–${hm(l.finish)}</p>${l.late > 0.5 ? `<p class="pop-late">Llega ${Math.round(l.late)} min tarde</p>` : ''}${a ? `<p>${esc(a.status)}</p>` : ''}</div>`;
+      pin(ctx, ll(l.stop.n), `<span>${i + 1}</span>`, `pin-stop ${done ? 'is-done' : ''} ${l.late > 0.5 ? 'is-late' : ''}`, { popup: pop, tip: x.tips === false ? null : `${hm(l.arrive)}`, z: 500, title: l.stop.label });
+      tl.stays.push({ a: l.arrive, b: l.finish, pt: ll(l.stop.n), label: (l.wait > 0.5 ? 'Esperando la franja · ' : 'Atendiendo · ') + l.stop.label });
+    });
+    const place = (n) => Object.values(D.PLACES).find((p) => p.node === n);
+    const pa = place(o.start), pb = place(o.end);
+    pin(ctx, ll(o.start), 'A', 'pin-ab', { popup: `<div class="pop"><p class="pop-k">Punto A · salida ${hm(o.depart)}</p><p class="pop-t">${esc(pa ? pa.label : 'Salida')}</p>${pa ? `<p>${esc(pa.address)}, ${pa.zone}</p>` : ''}</div>`, tip: x.tips === false ? null : (pa ? pa.label : 'Salida'), z: 600 });
+    pin(ctx, ll(o.end), 'B', 'pin-ab pin-b', { popup: `<div class="pop"><p class="pop-k">Punto B · llegada ${hm(res.finish)}</p><p class="pop-t">${esc(pb ? pb.label : 'Llegada')}</p>${pb ? `<p>${esc(pb.address)}, ${pb.zone}</p>` : ''}</div>`, tip: x.tips === false || o.end === o.start ? null : (pb ? pb.label : 'Llegada'), z: 600 });
+    if (!ctx.en.timeline) ctx.en.timeline = tl;
+    return tl;
+  }
+
+  /* Rutas alternativas entre dos puntos */
+  function alts(ctx, list, sel, onSel) {
+    list.forEach((p, i) => { if (i !== sel) line(ctx, p.coords, ALT[i % 3], { weight: 5, opacity: 0.85, dash: '9 8', tip: `${i === 0 ? 'Recomendada' : 'Alternativa ' + i} · ${Math.round(p.minutes)} min`, onClick: onSel ? () => onSel(i) : null }); });
+    const p = list[sel];
+    if (p) line(ctx, p.coords, ALT[sel % 3], { weight: 8, arrows: true, tip: `${sel === 0 ? 'Recomendada' : 'Alternativa ' + sel} · ${Math.round(p.minutes)} min` });
+  }
+
+  /* ---------- Animación del motorizado ---------- */
+  const lenOf = (c) => { const cum = [0]; for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + dist(c[i - 1], c[i])); return cum; };
+  function posAt(seg, f) {
+    if (!seg.cum) seg.cum = lenOf(seg.coords);
+    const tot = seg.cum[seg.cum.length - 1], d = tot * f;
+    let i = 1; while (i < seg.cum.length - 1 && seg.cum[i] < d) i++;
+    const a = seg.coords[i - 1], b = seg.coords[i], s = seg.cum[i] - seg.cum[i - 1] || 1, g = (d - seg.cum[i - 1]) / s;
+    return [a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g];
+  }
+  function stopAnim(en) {
+    if (!en.anim) return;
+    cancelAnimationFrame(en.anim.raf);
+    en.anim.marker.remove(); en.anim.box.remove();
+    en.anim = null;
+  }
+  function animate(key, seconds = 28) {
+    const en = entries[key];
+    if (!en || !en.timeline) return;
+    stopAnim(en);
+    const tl = en.timeline;
+    const marker = L.marker(tl.segs[0].coords[0], { icon: L.divIcon({ className: 'moto-wrap', iconSize: [40, 40], iconAnchor: [20, 20], html: `<div class="moto">${U.icon('moto')}</div>` }), zIndexOffset: 2000, interactive: false }).addTo(en.map);
+    const Box = L.Control.extend({ onAdd() { const d = L.DomUtil.create('div', 'anim-box'); d.setAttribute('aria-live', 'polite'); return d; } });
+    const box = new Box({ position: 'topright' }).addTo(en.map);
+    const start = performance.now();
+    en.anim = { marker, box, raf: 0, tl };
+    const step = (now) => {
+      const T = en.anim.tl, p = Math.min(1, (now - start) / (seconds * 1000));
+      const t = T.t0 + (T.t1 - T.t0) * p;
+      let pos = null, label = '';
+      for (const s of T.segs) if (t >= s.a && t <= s.b) { pos = posAt(s, s.b > s.a ? (t - s.a) / (s.b - s.a) : 1); label = s.label; break; }
+      if (!pos) for (const s of T.stays) if (t >= s.a && t <= s.b) { pos = s.pt; label = s.label; break; }
+      if (pos) marker.setLatLng(pos);
+      box.getContainer().innerHTML = `<strong>${hm(t)}</strong><span>${esc(p >= 1 ? 'Ruta completada' : label)}</span>`;
+      if (p < 1) en.anim.raf = requestAnimationFrame(step);
+    };
+    en.anim.raf = requestAnimationFrame(step);
+  }
+  function invalidate() { Object.values(entries).forEach((en) => { if (en.div.isConnected) en.map.invalidateSize(); }); }
+
+  function legend(o = {}) {
     return `<div class="map-legend" aria-label="Leyenda del mapa">
-      <span><i class="lg-line" style="background:${LV.fluido}"></i>Tráfico fluido</span>
-      <span><i class="lg-line" style="background:${LV.moderado}"></i>Moderado</span>
-      <span><i class="lg-line" style="background:${LV.denso}"></i>Denso</span>
-      <span><i class="lg-line lg-route"></i>Ruta optimizada</span>
-      ${withAlt ? '<span><i class="lg-line lg-alt"></i>Alternativa</span>' : ''}
-      <span><i class="lg-box">A</i>Partida</span><span><i class="lg-box">B</i>Llegada</span>
+      ${o.traffic !== false ? `<span><i class="lg-line" style="background:${LV.fluido}"></i>Tráfico fluido</span><span><i class="lg-line" style="background:${LV.moderado}"></i>Moderado</span><span><i class="lg-line" style="background:${LV.denso}"></i>Denso</span>` : ''}
+      ${o.crews ? o.crews.map((c, i) => `<span><i class="lg-line lg-thick" style="background:${CREW_COLORS[i]}"></i>${c}</span>`).join('') : '<span><i class="lg-line lg-thick" style="background:#0F766E"></i>Ruta optimizada (con flechas de sentido)</span>'}
+      ${o.alt ? '<span><i class="lg-line lg-alt"></i>Ruta alternativa</span>' : ''}
+      <span><i class="lg-pin">1</i>Parada y hora de llegada</span><span><i class="lg-box">A</i>Salida</span><span><i class="lg-box lg-b">B</i>Llegada</span>
+      <span><i class="lg-zone"></i>Límite de distrito</span>
     </div>`;
   }
 
-  H.map = { svg, legend, ALT };
+  H.map = { slot, mountAll, districts, traffic, route, alts, line, pin, animate, invalidate, legend, ALT, CREW_COLORS, ll, ready: !!L };
 })();

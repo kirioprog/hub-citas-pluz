@@ -38,7 +38,7 @@ Otras demostraciones:
 - **Regla del día 4**: Pluz → Alertas → «Clientes ausentes» → Mateo Vega → *Ver opciones*. El día 4 solo deja la franja que encaja en la ruta ya programada de la Cuadrilla 3; las demás aparecen como «Afecta la ruta».
 - **Agendamiento rápido**: Pluz → Agendamiento rápido → *Rellenar ejemplo* → *Buscar horarios*. Se proponen los horarios más próximos con menor desvío de ruta. Al crear la cita se genera el enlace único.
 - **Enlace único**: desde el detalle de una cita o desde el chat, *Abrir como cliente*. También funciona en otra pestaña, por ejemplo `…/index.html#/c/T6vN2m` (Mateo) o `#/c/c8Kx2Q` (Carlos).
-- **Rutas con tráfico**: Contratista → Rutas. Activa la lluvia, la obra en Javier Prado o la feria en Carretera Central, cambia la hora de salida o los puntos A y B y toca un tramo para ver las rutas alternativas.
+- **Rutas con tráfico**: Contratista → Rutas → **Simular recorrido**. Activa la lluvia, la obra en Javier Prado o el accidente en Av. La Molina, cambia la hora de salida o los puntos A y B, toca un tramo para comparar caminos y elige «Escenario ampliado: 12 viviendas».
 
 ## Flujo de WhatsApp (simulado)
 
@@ -60,25 +60,45 @@ Otras demostraciones:
 - Capacidad: 2 visitas por cuadrilla y franja. Antes de aceptar un horario, se inserta la visita en la ruta y se verifica que el técnico llegue dentro de la franja sin retrasar a nadie.
 - En riesgo: la cita sigue sin confirmar y le queda 1 día o menos de plazo.
 
-## Optimización de rutas con grafos (`js/routing.js`)
+## Mapa y optimización de rutas con grafos
 
-- **Grafo vial esquemático** de Santa Anita, Ate y La Molina: 35 intersecciones y tramos con tipo de vía (avenida, principal o calle) y distancia.
-- **Tráfico**: el tiempo de cada tramo es su tiempo a flujo libre multiplicado por un factor que cambia según la hora (horas punta de mañana y tarde, y mediodía), el tipo de vía y los eventos (lluvia, obras, ferias).
-- **Camino más rápido**: Dijkstra dependiente del tiempo; cada tramo se evalúa a la hora en que se recorre.
-- **Rutas alternativas al mismo destino**: algoritmo de Yen (k caminos más cortos), descartando las que se solapan más del 70 %.
-- **Orden de visitas del punto A al punto B**: programación dinámica tipo Held–Karp con ventanas horarias y etiquetas Pareto. Primero minimiza los minutos fuera de franja, luego la hora de llegada a B y luego el tiempo de manejo. Se compara con el orden sin optimizar.
-- **En producción**: los tiempos por tramo podrían venir de un servicio con tráfico en tiempo real (por ejemplo, Google Routes API) y el mapa se podría dibujar con Google Maps. Este prototipo **no se conecta** a ningún servicio externo; el mapa es un recuadro esquemático de ejemplo.
+**Mapa real.** Los mapas usan Leaflet con los mosaicos de OpenStreetMap. Muestran los límites reales de Santa Anita, Ate y La Molina, la ruta con flechas de sentido, las paradas numeradas con su hora estimada de llegada, los puntos A y B, la capa de tráfico y las rutas alternativas. Las citas, bases y sedes están ubicadas en calles reales; la numeración de las viviendas y las personas son ficticias. Hay mapas en:
+
+- **Contratista > Rutas**: mapa grande con pantalla completa, botón **Simular recorrido** (el motorizado avanza por las calles con el reloj de la ruta), vista de **una cuadrilla** o de **todas las cuadrillas** del día, comparación de caminos por tramo e indicaciones giro a giro.
+- **Técnico > Mapa** y **Cómo llegar**: su ruta del día, la simulación y las indicaciones a la siguiente visita.
+- **Pluz > Mapa de citas**: todas las solicitudes por estado. Además, hay un mapa pequeño en el detalle de cada cita y en el enlace del cliente.
+
+Si no hay conexión a los mosaicos, el mapa dibuja la red vial propia como mapa base.
+
+**Grafo vial real** (`js/geo-data.js`, generado con `tools/build_graph.py` desde OpenStreetMap):
+
+- 6 800 intersecciones y 9 858 tramos con nombre, tipo de vía y **sentido de circulación** (se respetan las calles de un solo sentido).
+- **Tráfico**: el tiempo de cada tramo es su tiempo a flujo libre multiplicado por un factor que depende de la hora (horas punta y mediodía), del tipo de vía (las avenidas se congestionan más) y de eventos activables: lluvia, obra en Av. Javier Prado Este, congestión en Av. Nicolás Ayllón (Carretera Central) y accidente en Av. La Molina.
+- **Camino más rápido**: Dijkstra dependiente del tiempo, con montículo binario.
+- **Rutas alternativas al mismo destino**: método de penalización (se encarecen los tramos de la ruta encontrada y se vuelve a buscar); se descartan las que se solapan más del 72 %.
+- **Orden de visitas de A a B**: programación dinámica tipo Held–Karp con ventanas horarias y etiquetas Pareto. Primero minimiza los minutos fuera de franja, luego la hora de llegada a B y luego el tiempo de manejo. Se compara con el orden sin optimizar. El escenario ampliado tiene 12 viviendas.
+- **Indicaciones giro a giro** calculadas con la geometría y los nombres de las calles.
+- **En producción**: los tiempos podrían venir de un servicio con tráfico en tiempo real (por ejemplo, Google Routes API). Aquí el tráfico es un modelo simulado.
+
+Para regenerar el grafo: descarga de Overpass las vías del recuadro `-12.100,-76.995,-12.018,-76.900` y los límites distritales (las consultas están en `tools/build_graph.py`) y ejecuta:
+
+```bash
+python3 tools/build_graph.py roads.json districts.json js/geo-data.js
+```
 
 ## Estructura
 
 ```
 index.html
 css/styles.css
-js/data.js         datos de ejemplo, grafo vial, franjas
-js/routing.js      tráfico, Dijkstra, Yen, programación dinámica
+js/geo-data.js     red vial real (OpenStreetMap) y límites distritales
+js/data.js         datos de ejemplo, decodificación del grafo, franjas
+js/routing.js      tráfico, Dijkstra, alternativas, programación dinámica, indicaciones
 js/store.js        estado compartido, reglas y flujo de WhatsApp
 js/ui.js           íconos SVG y utilidades
-js/map.js          mapa esquemático en SVG
+js/map.js          mapas interactivos con Leaflet y animación del motorizado
+vendor/leaflet/    Leaflet 1.9.4 (licencia BSD-2)
+tools/build_graph.py  genera geo-data.js desde OpenStreetMap
 js/app.js          render, eventos, inicio de sesión y estructura
 js/pluz.js         vista de Pluz
 js/contratista.js  vista del contratista
@@ -88,4 +108,4 @@ js/cliente.js      enlace único del cliente
 
 ## Alcance y restricciones
 
-Sin integraciones reales (Salesforce, SAP, WhatsApp, Google Maps), sin mapa real, sin IA, sin datos reales y sin `localStorage`. Las llamadas, los mensajes de WhatsApp, «Cómo llegar» y la exportación a Excel son simulados. Las 8 citas, los nombres, los teléfonos y los DNI son ficticios. Se muestra el banner permanente «Datos de ejemplo».
+Sin integraciones reales (Salesforce, SAP, WhatsApp, Google Maps), sin IA, sin datos reales y sin `localStorage`. Las llamadas, los mensajes de WhatsApp, «Cómo llegar» y la exportación a Excel son simulados. Las 8 citas, los nombres, los teléfonos, los DNI y la numeración de las viviendas son ficticios. Las calles y los límites distritales provienen de OpenStreetMap (© colaboradores de OpenStreetMap, ODbL). Se muestra el banner permanente «Datos de ejemplo».

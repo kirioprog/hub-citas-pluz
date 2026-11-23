@@ -76,12 +76,12 @@
   function emit() { st.listeners.forEach((f) => f()); }
 
   /* ---------- Rutas por cuadrilla ---------- */
-  function placeIdx(key) { return D.idx[D.PLACES[key].node]; }
+  function placeIdx(key) { return D.PLACES[key].node; }
   st.options = (contractor, override) => {
     const c = Object.assign({}, st.routeCfg[contractor], override || {});
     return { start: placeIdx(c.start), end: placeIdx(c.end), depart: c.depart, service: c.service, cond: c.cond };
   };
-  const toStop = (a, slot = a.slot) => ({ id: a.id, n: D.idx[a.node], win: D.slotWindow(slot), label: a.name, a, slot });
+  const toStop = (a, slot = a.slot) => ({ id: a.id, n: a.node, win: D.slotWindow(slot), label: a.name, a, slot });
   st.toStop = toStop;
   st.crewStops = (contractor, crew, date, exclude) => st.appts
     .filter((a) => a.contractor === contractor && a.crew === crew && a.date === date && ROUTE_STATUSES.includes(a.status) && a.id !== exclude)
@@ -327,7 +327,7 @@
     const n = 1041 + st.appts.length;
     const token = Math.random().toString(36).slice(2, 8);
     const a = {
-      id: 'FT-2026-' + n, name: f.name.trim(), phone: f.phone.trim(), zone: f.zone, address: f.address, node: f.node,
+      id: 'FT-2026-' + n, name: f.name.trim(), phone: f.phone.trim(), zone: f.zone, address: f.address, node: f.node, pt: f.pt,
       status: 'Pendiente de contacto', contractor: opt.contractor, crew: null, requested: D.today, date: opt.date, slot: opt.slot,
       attempts: 0, addressValid: true, dni: f.dni.trim(), token, history: [], chat: [], representative: null, comment: '', arrived: false, quick: true
     };
@@ -369,12 +369,12 @@
   /* ---------- Carga de los datos de ejemplo ---------- */
   function seed() {
     D.SEED.forEach((r) => {
-      const [n, name, phone, zone, address, node, status, contractor, crew, reqOff, dateOff, slot, attempts, addressValid, dni, token] = r;
+      const [n, name, phone, zone, address, pt, status, contractor, crew, reqOff, dateOff, slot, attempts, addressValid, dni, token] = r;
       const requested = D.addDays(D.today, reqOff);
       const date = dateOff === null ? null : dateOff === 0 ? D.today : D.nextWorkday(D.today, dateOff);
       const slots = date ? D.slotsFor(date) : [];
       const a = {
-        id: 'FT-2026-' + n, name, phone, zone, address, node, status, contractor, crew, requested, date,
+        id: 'FT-2026-' + n, name, phone, zone, address, pt, node: D.snap(pt[0], pt[1]), status, contractor, crew, requested, date,
         slot: date ? (slots.includes(slot) ? slot : slots[0]) : null, attempts, addressValid, dni, token,
         history: [], chat: [], representative: null, comment: '', arrived: false, needsConfirm: status === 'Franja ofrecida'
       };

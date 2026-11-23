@@ -13,11 +13,12 @@
     const items = [
       { key: 'resumen', label: 'Resumen', icon: 'grid' },
       { key: 'citas', label: 'Citas', icon: 'list' },
+      { key: 'mapa', label: 'Mapa de citas', icon: 'map' },
       { key: 'alertas', label: 'Alertas', icon: 'bell', badge: nAlerts || '' },
       { key: 'simulador', label: 'Simulador de cliente', icon: 'chat' },
       { key: 'rapido', label: 'Agendamiento rápido', icon: 'zap' }
     ];
-    const body = { resumen, citas, alertas: () => alertas(alerts), simulador, rapido }[page]();
+    const body = { resumen, citas, mapa, alertas: () => alertas(alerts), simulador, rapido }[page]();
     return H.views.shell(items, page, body);
   };
 
@@ -101,6 +102,30 @@
   H.act.open = (d) => { S.selected = d.id; setTimeout(() => { const el = document.getElementById('drawer-close'); if (el) el.focus(); }, 0); };
   H.act.closeDetail = () => { S.selected = null; };
 
+  /* ---------- Mapa de citas ---------- */
+  const popFor = (a) => `<div class="pop"><p class="pop-k">${esc(a.id)} · ${a.zone}</p><p class="pop-t">${esc(a.name)}</p><p>${esc(a.address)}</p><p>${a.date ? U.dayLabel(a.date) + ' · <b>' + a.slot + '</b>' : 'Sin franja'}</p><p>${esc(a.status)} · ${D.CONTRACTORS[a.contractor]}${a.crew ? ' · Cuadrilla ' + a.crew : ''}</p><button class="btn btn-ghost btn-sm" data-act="open" data-id="${a.id}">Ver detalle</button></div>`;
+  function mapa() {
+    const days = [...new Set(st.appts.map((a) => a.date).filter(Boolean))].sort();
+    const day = S.pluzMapDay;
+    const list = st.appts.filter((a) => day === 'todas' || a.date === day || (day === 'sin' && !a.date));
+    const sig = 'pluz|' + day + '|' + list.length;
+    const map = H.map.slot('pluz', { height: S.mapFull === 'pluz' ? 'calc(100vh - 150px)' : '68vh', label: 'Mapa de citas', sig,
+      draw: (c) => {
+        H.map.districts(c);
+        for (const [k, p] of Object.entries(D.PLACES)) if (k !== 'almacen') H.map.pin(c, H.map.ll(p.node), icon('building'), 'pin-place', { popup: `<div class="pop"><p class="pop-t">${p.label}</p><p>${p.address}, ${p.zone}</p></div>`, z: 100 });
+        list.forEach((a) => H.map.pin(c, H.map.ll(a.node), U.initials(a.name), 'pin-status tone-' + U.TONE[a.status], { popup: popFor(a), tip: a.name.split(' ')[0] + (a.slot ? ' · ' + a.slot.slice(0, 5) : ''), z: 400 }));
+      } });
+    const full = S.mapFull === 'pluz';
+    return head('Mapa de citas', 'Ubicación de cada solicitud en el mapa real, con su estado. Toca un punto para ver el detalle.') + `
+    <div class="toolbar">${field('Día', select('pluzMapDay', [['todas', 'Todas las citas']].concat(days.map((d) => [d, U.dayLabel(d)]), [['sin', 'Sin fecha']]), day, { id: 'pm-day', label: 'Día' }))}<p class="muted small">${list.length} citas en el mapa</p></div>
+    <section class="card map-card ${full ? 'is-full' : ''}">
+      <div class="map-head"><h2 class="card-title">${icon('map')}Santa Anita, Ate y La Molina</h2>${btn(full ? 'Salir de pantalla completa' : 'Pantalla completa', 'mapFull', { data: { key: 'pluz' }, cls: 'btn-ghost btn-sm', icon: full ? 'x' : 'expand' })}</div>
+      ${map}
+      <div class="map-legend">${D.STATUSES.map((s) => `<span><i class="lg-dot tone-${U.TONE[s]}"></i>${s}</span>`).join('')}<span><i class="lg-dot lg-place"></i>Base o sede</span><span><i class="lg-zone"></i>Límite de distrito</span></div>
+    </section>`;
+  }
+  H.change.pluzMapDay = (v) => { S.pluzMapDay = v; };
+
   /* ---------- Detalle (panel lateral) ---------- */
   const MILESTONES = [['registrada', 'Solicitud registrada'], ['whatsapp', 'WhatsApp enviado'], ['confirmo', 'Cliente confirmó'], ['recordatorio', 'Recordatorio'], ['camino', 'Técnico en camino'], ['resultado', 'Resultado']];
   const KIND_ICON = { registrada: 'edit', whatsapp: 'chat', confirmo: 'check', recordatorio: 'bell', camino: 'nav', llego: 'arrive', resultado: 'flag', reprogramada: 'calendar', cancelada: 'x', asignacion: 'team', representante: 'user', direccion: 'pin' };
@@ -139,6 +164,8 @@
           ${a.representative ? dl('Representante', esc(a.representative)) : ''}
           ${a.comment ? dl('Comentario del técnico', esc(a.comment)) : ''}
         </dl>
+        <div class="mini-map">${H.map.slot('detail', { height: '210px', label: 'Ubicación de ' + a.name, sig: 'd|' + a.id, wheel: false, maxZoom: 16,
+          draw: (c) => { H.map.pin(c, H.map.ll(a.node), U.initials(a.name), 'pin-status tone-' + U.TONE[a.status], { tip: a.address, z: 400 }); } })}</div>
         <section class="link-box">
           <p class="small"><strong>${icon('link')}Enlace único del cliente</strong> · sin registro, solo para esta solicitud</p>
           <code class="link-url">${esc(url)}</code>
@@ -359,14 +386,14 @@
     if (!/^\d{8}$/.test(f.dni.trim())) e.dni = 'El DNI debe tener 8 dígitos.';
     S.quick.errors = e;
     if (Object.keys(e).length) { S.quick.results = null; U.toast('Revisa los datos marcados.', 'error'); return; }
-    const [address, node] = D.ADDRESS_BOOK[f.zone][+f.address];
+    const [address, , , node] = D.ADDRESS_BOOK[f.zone][+f.address];
     S.quick.results = st.quickOptions({ node, zone: f.zone, address }, f.contractor || null);
     S.quick.sel = 0;
   };
   H.act.quickCreate = (d) => {
     const f = S.quick.form, o = S.quick.results[S.quick.sel];
-    const [address, node] = D.ADDRESS_BOOK[f.zone][+f.address];
-    const a = st.actions.createQuick({ ...f, address, node }, o, d.mode);
+    const [address, lat, lng, node] = D.ADDRESS_BOOK[f.zone][+f.address];
+    const a = st.actions.createQuick({ ...f, address, node, pt: [lat, lng] }, o, d.mode);
     S.quick.created = a.id;
     U.toast(d.mode === 'confirmar' ? 'Visita confirmada y enlace enviado.' : 'WhatsApp enviado con la franja propuesta.');
   };

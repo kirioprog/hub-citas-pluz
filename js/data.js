@@ -46,118 +46,97 @@
   const CREWS = ['1', '2', '3'];
   const CREW_SLOT_CAPACITY = 2; // visitas por cuadrilla y franja
 
-  /* ---------- Grafo vial esquemático ----------
-   * Intersecciones (nodos) y tramos (aristas) de una red ficticia que cubre
-   * Santa Anita (oeste), Ate (noreste) y La Molina (sureste). */
-  const COLS = [70, 210, 350, 490, 630, 770, 910];
-  const ROWS = [70, 190, 310, 430, 550];
-  const JIT = [[0, 0], [7, -9], [-6, 7], [9, 4], [-7, -6], [5, 10], [-9, 3]];
-  const KM_PER_PX = 0.011;
-
+  /* ---------- Red vial real (OpenStreetMap) ----------
+   * js/geo-data.js contiene las intersecciones y tramos reales de Santa Anita, Ate y La Molina
+   * (generado con tools/build_graph.py). Aquí se decodifica a un grafo dirigido. */
+  const GEO = window.HubGeo;
+  const B0 = GEO.base;
+  const ZONE_NAMES = ['Santa Anita', 'Ate', 'La Molina'];
   const nodes = [];
-  const idx = {};
-  for (let r = 0; r < ROWS.length; r++) {
-    for (let c = 0; c < COLS.length; c++) {
-      const id = 'n' + r + c;
-      const zone = c <= 2 ? 'Santa Anita' : r <= 2 ? 'Ate' : 'La Molina';
-      idx[id] = nodes.length;
-      nodes.push({ id, r, c, zone, x: COLS[c] + JIT[(r + c) % 7][0], y: ROWS[r] + JIT[(r * 3 + c) % 7][1] });
-    }
+  for (let i = 0; i < GEO.nodes.length / 2; i++) {
+    nodes.push({ lat: B0[0] + GEO.nodes[2 * i] / 1e5, lng: B0[1] + GEO.nodes[2 * i + 1] / 1e5, zone: ZONE_NAMES[GEO.zones[i]] || null });
   }
-
-  const H_ROADS = [
-    ['Carretera Central', 'avenida'],
-    ['Av. Nicolás Ayllón', 'principal'],
-    ['Av. Javier Prado Este', 'avenida'],
-    ['Av. La Fontana', 'principal'],
-    ['Av. Raúl Ferrero', 'principal']
+  const decode = (arr) => { const out = []; for (let i = 0; i < arr.length; i += 2) out.push([B0[0] + arr[i] / 1e5, B0[1] + arr[i + 1] / 1e5]); return out; };
+  /* Tipos de vía (clase OSM) */
+  const CLASSES = [
+    { label: 'Vía expresa', speed: 50, sens: 1.6 },
+    { label: 'Avenida principal', speed: 40, sens: 1.5 },
+    { label: 'Avenida secundaria', speed: 33, sens: 1.1 },
+    { label: 'Vía local', speed: 28, sens: 0.7 },
+    { label: 'Calle residencial', speed: 20, sens: 0.3 }
   ];
-  const H_ROADS_WEST = { 3: ['Calle Los Geranios', 'calle'], 4: ['Calle Las Dalias', 'calle'] };
-  const V_ROADS = [
-    ['Av. Huarochirí', 'principal'],
-    ['Calle Los Ruiseñores', 'calle'],
-    ['Vía de Evitamiento', 'avenida'],
-    ['Calle Las Begonias', 'calle'],
-    ['Av. La Molina', 'avenida'],
-    ['Calle Los Fresnos', 'calle'],
-    ['Av. Los Constructores', 'principal']
-  ];
-  const SKIP = new Set(['n05|n15', 'n41|n42', 'n32|n42']);
-
-  const edges = [];
-  const adj = nodes.map(() => []);
-  function addEdge(a, b, name, type) {
-    if (SKIP.has(a + '|' + b)) return;
-    const A = nodes[idx[a]], B = nodes[idx[b]];
-    const px = Math.hypot(A.x - B.x, A.y - B.y);
-    const i = edges.length;
-    // Variabilidad fija por tramo (semáforos, paraderos, pistas angostas).
-    const v = 0.92 + ((i * 37) % 23) / 100;
-    edges.push({ id: a + '-' + b, a: idx[a], b: idx[b], name, type, km: +(px * KM_PER_PX).toFixed(2), v });
-    adj[idx[a]].push({ to: idx[b], e: i });
-    adj[idx[b]].push({ to: idx[a], e: i });
-  }
-  for (let r = 0; r < ROWS.length; r++) {
-    for (let c = 0; c < COLS.length - 1; c++) {
-      const road = c < 2 && H_ROADS_WEST[r] ? H_ROADS_WEST[r] : H_ROADS[r];
-      addEdge('n' + r + c, 'n' + r + (c + 1), road[0], road[1]);
-    }
-  }
-  for (let c = 0; c < COLS.length; c++) {
-    for (let r = 0; r < ROWS.length - 1; r++) addEdge('n' + r + c, 'n' + (r + 1) + c, V_ROADS[c][0], V_ROADS[c][1]);
-  }
-  [['n11', 'n22'], ['n22', 'n33'], ['n33', 'n44']].forEach(([a, b]) => addEdge(a, b, 'Av. Separadora Industrial', 'avenida'));
-
-  const SPEED = { avenida: 42, principal: 30, calle: 20 }; // km/h a flujo libre
-
   /* Eventos que alteran el tráfico (se activan en la vista de rutas). */
   const INCIDENTS = [
-    { id: 'obra', label: 'Obra en Av. Javier Prado Este (tramo Ate)', factor: 2.6,
-      edges: ['n23-n24', 'n24-n25', 'n25-n26'] },
-    { id: 'feria', label: 'Feria en Carretera Central', factor: 1.9,
-      edges: ['n01-n02', 'n02-n03', 'n03-n04'] }
+    { id: 'obra', label: 'Obra en Av. Javier Prado Este', factor: 2.6, match: /Javier Prado/ },
+    { id: 'feria', label: 'Congestión en Av. Nicolás Ayllón (Carretera Central)', factor: 2.0, match: /Nicolás de Ayllón/ },
+    { id: 'accidente', label: 'Accidente en Av. La Molina', factor: 3.0, match: /^Avenida La Molina$/ }
   ];
+  const edges = GEO.edges.map((e, i) => {
+    const name = GEO.names[e[3]];
+    return { a: e[0], b: e[1], cls: e[2], name, m: e[4], oneway: e[5], geom: decode(e[6]),
+      v: 0.9 + ((i * 37) % 25) / 100, inc: INCIDENTS.filter((x) => x.match.test(name)).map((x) => x.id) };
+  });
+  const adj = nodes.map(() => []);
+  edges.forEach((e, i) => {
+    adj[e.a].push({ to: e.b, e: i, rev: false });
+    if (!e.oneway) adj[e.b].push({ to: e.a, e: i, rev: true });
+  });
+  /* Ubica una coordenada en la intersección más cercana de la red. */
+  function snap(lat, lng) {
+    let best = 0, bd = Infinity;
+    const k = Math.cos(lat * Math.PI / 180);
+    for (let i = 0; i < nodes.length; i++) {
+      if (!adj[i].length) continue;
+      const d = (nodes[i].lat - lat) ** 2 + ((nodes[i].lng - lng) * k) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
 
   const PLACES = {
-    baseA: { label: 'Base Contratista A', node: 'n11', zone: 'Santa Anita' },
-    baseB: { label: 'Base Contratista B', node: 'n44', zone: 'La Molina' },
-    sedeAte: { label: 'Sede Pluz Ate', node: 'n04', zone: 'Ate' },
-    almacen: { label: 'Almacén Santa Anita', node: 'n40', zone: 'Santa Anita' }
+    baseA: { label: 'Base Contratista A', address: 'Av. Los Ruiseñores', zone: 'Santa Anita', pt: [-12.04690, -76.96845] },
+    baseB: { label: 'Base Contratista B', address: 'Av. Los Fresnos', zone: 'La Molina', pt: [-12.08929, -76.94809] },
+    sedeAte: { label: 'Sede Pluz Ate', address: 'Av. Nicolás Ayllón', zone: 'Ate', pt: [-12.02385, -76.91351] },
+    almacen: { label: 'Almacén Santa Anita', address: 'Av. Nicolás Ayllón', zone: 'Santa Anita', pt: [-12.05824, -76.97304] }
   };
+  Object.values(PLACES).forEach((p) => { p.node = snap(p.pt[0], p.pt[1]); });
 
-  /* Direcciones de ejemplo para el agendamiento rápido. */
+  /* Direcciones de ejemplo (calles reales, numeración ficticia) para el agendamiento rápido. */
   const ADDRESS_BOOK = {
-    'Santa Anita': [['Jr. Los Jazmines 310', 'n10'], ['Calle Las Gardenias 77', 'n20'], ['Av. Cascanueces 905', 'n31'], ['Jr. Los Tulipanes 52', 'n42']],
-    'Ate': [['Av. Los Laureles 640', 'n05'], ['Jr. Las Retamas 215', 'n14'], ['Calle Los Robles 98', 'n26'], ['Av. Las Acacias 433', 'n16']],
-    'La Molina': [['Calle Los Cipreses 120', 'n34'], ['Av. Los Álamos 560', 'n43'], ['Jr. Las Hiedras 88', 'n45'], ['Calle Las Lilas 301', 'n36']]
+    'Santa Anita': [['Calle María Parado de Bellido 310', -12.04023, -76.98411], ['Calle Estrada Marthney 77', -12.04919, -76.95159], ['Jr. Huyana 905', -12.03988, -76.96453], ['Av. Ferrocarril 52', -12.03446, -76.96684]],
+    'Ate': [['Calle San Luis 640', -12.02354, -76.94147], ['Calle Conquistadores 215', -12.03824, -76.89998], ['Calle Monteverde 98', -12.04736, -76.91702], ['Calle Guadalajara 433', -12.05808, -76.93988]],
+    'La Molina': [['Jr. Costa Azul 120', -12.07139, -76.95032], ['Calle Los Rosales 560', -12.09628, -76.93947], ['Calle La Ramada 88', -12.07808, -76.90519], ['Jr. Michigan 301', -12.08782, -76.92819]]
   };
+  Object.values(ADDRESS_BOOK).forEach((list) => list.forEach((x) => x.push(snap(x[1], x[2]))));
 
-  /* Escenario ampliado solo para el laboratorio de rutas (12 viviendas ficticias). */
-  const LAB = [
-    ['Vivienda 01', 'n10', '08:00–10:00'], ['Vivienda 02', 'n31', '08:00–10:00'], ['Vivienda 03', 'n22', '10:00–12:00'],
-    ['Vivienda 04', 'n14', '08:00–10:00'], ['Vivienda 05', 'n26', '10:00–12:00'], ['Vivienda 06', 'n05', '12:00–14:00'],
-    ['Vivienda 07', 'n34', '12:00–14:00'], ['Vivienda 08', 'n43', '14:00–16:00'], ['Vivienda 09', 'n45', '10:00–12:00'],
-    ['Vivienda 10', 'n20', '14:00–16:00'], ['Vivienda 11', 'n36', '16:00–18:00'], ['Vivienda 12', 'n42', '16:00–18:00']
-  ];
+  /* Escenario ampliado solo para el laboratorio de rutas (12 viviendas ficticias en calles reales). */
+  // Franjas repartidas para que la jornada sea factible y el orden no sea obvio.
+  const LAB_SLOTS = ['08:00–10:00', '10:00–12:00', '08:00–10:00', '10:00–12:00', '12:00–14:00', '10:00–12:00', '12:00–14:00', '14:00–16:00', '14:00–16:00', '16:00–18:00', '16:00–18:00', '14:00–16:00'];
+  const LAB = [];
+  let li = 0;
+  ['Santa Anita', 'Ate', 'La Molina'].forEach((z) => ADDRESS_BOOK[z].forEach((x) => {
+    LAB.push(['Vivienda ' + String(li + 1).padStart(2, '0'), x[3], LAB_SLOTS[li], x[0], z]);
+    li++;
+  }));
 
   /* ---------- 8 citas de ejemplo ----------
-   * [n°, nombre, teléfono, zona, dirección, nodo, estado, contratista, cuadrilla,
-   *  días desde la solicitud (negativo = pasado), día de visita (offset), franja,
+   * [n°, nombre, teléfono, zona, dirección, estado, contratista, cuadrilla,
+   *  [lat, lng], días desde la solicitud (negativo = pasado), día de visita (offset), franja,
    *  intentos de contacto, dirección validada, DNI ficticio, token del link único] */
   const SEED = [
-    ['1041', 'Carlos Mendoza', '912 345 601', 'Santa Anita', 'Av. Los Eucaliptos 245', 'n21', 'Franja ofrecida', 'A', null, -1, 0, '10:00–12:00', 1, false, '45128731', 'c8Kx2Q'],
-    ['1042', 'Lucía Ramírez', '923 456 602', 'Ate', 'Jr. Las Orquídeas 118', 'n15', 'Confirmada', 'A', '1', -1, 0, '12:00–14:00', 1, true, '47019264', 'L4mZp9'],
-    ['1043', 'Valeria Torres', '934 567 603', 'La Molina', 'Calle Los Olivos 362', 'n35', 'En camino', 'B', '2', -2, 0, '10:00–12:00', 1, true, '40877315', 'V7tR3w'],
-    ['1044', 'Diego Salazar', '945 678 604', 'Santa Anita', 'Av. Los Nogales 507', 'n30', 'Pendiente de contacto', 'A', null, -2, null, null, 2, true, '43560982', 'D2sQ8n'],
-    ['1045', 'Mariana Flores', '956 789 605', 'Ate', 'Calle Las Palmeras 82', 'n13', 'Realizada', 'A', '1', -2, 0, '08:00–10:00', 1, true, '46231570', 'M9fP4k'],
-    ['1046', 'Gabriel Paredes', '967 890 606', 'La Molina', 'Jr. Los Cedros 194', 'n46', 'Reprogramada', 'B', '3', -1, 1, '08:00–10:00', 1, true, '41982046', 'G5pW1x'],
-    ['1047', 'Camila Rojas', '978 901 607', 'Santa Anita', 'Calle Los Sauces 46', 'n02', 'Cancelada', 'B', null, -1, 0, '14:00–16:00', 1, true, '48705613', 'C3rJ6v'],
-    ['1048', 'Mateo Vega', '989 012 608', 'Ate', 'Av. Las Magnolias 280', 'n24', 'Cliente ausente', 'B', '3', -3, 0, '08:00–10:00', 1, true, '42390857', 'T6vN2m']
+    ['1041', 'Carlos Mendoza', '912 345 601', 'Santa Anita', 'Pasaje Húsares de Junín 245', [-12.04313, -76.97499], 'Franja ofrecida', 'A', null, -1, 0, '10:00–12:00', 1, false, '45128731', 'c8Kx2Q'],
+    ['1042', 'Lucía Ramírez', '923 456 602', 'Ate', 'Calle Víctor Raúl Haya de la Torre 118', [-12.02990, -76.92504], 'Confirmada', 'A', '1', -1, 0, '12:00–14:00', 1, true, '47019264', 'L4mZp9'],
+    ['1043', 'Valeria Torres', '934 567 603', 'La Molina', 'Calle 5 · Urb. Santa Patricia 362', [-12.08017, -76.93453], 'En camino', 'B', '2', -2, 0, '10:00–12:00', 1, true, '40877315', 'V7tR3w'],
+    ['1044', 'Diego Salazar', '945 678 604', 'Santa Anita', 'Calle Melos 507', [-12.05209, -76.96263], 'Pendiente de contacto', 'A', null, -2, null, null, 2, true, '43560982', 'D2sQ8n'],
+    ['1045', 'Mariana Flores', '956 789 605', 'Ate', 'Av. Marcella 82', [-12.04504, -76.93061], 'Realizada', 'A', '1', -2, 0, '08:00–10:00', 1, true, '46231570', 'M9fP4k'],
+    ['1046', 'Gabriel Paredes', '967 890 606', 'La Molina', 'Jr. La Chalana 194', [-12.08586, -76.91517], 'Reprogramada', 'B', '3', -1, 1, '08:00–10:00', 1, true, '41982046', 'G5pW1x'],
+    ['1047', 'Camila Rojas', '978 901 607', 'Santa Anita', 'Calle 1 · Coop. Universal 46', [-12.03611, -76.95593], 'Cancelada', 'B', null, -1, 0, '14:00–16:00', 1, true, '48705613', 'C3rJ6v'],
+    ['1048', 'Mateo Vega', '989 012 608', 'Ate', 'Calle La Coruña 280', [-12.05939, -76.94268], 'Cliente ausente', 'B', '3', -3, 0, '08:00–10:00', 1, true, '42390857', 'T6vN2m']
   ];
 
   H.data = {
     today, addDays, dow, diffDays, nextWorkday, slotsFor, slotWindow, SLOTS, STATUSES, ZONES,
-    CONTRACTORS, CREWS, CREW_SLOT_CAPACITY, nodes, idx, edges, adj, SPEED, INCIDENTS, PLACES,
-    ADDRESS_BOOK, LAB, SEED
+    CONTRACTORS, CREWS, CREW_SLOT_CAPACITY, nodes, edges, adj, CLASSES, INCIDENTS, PLACES,
+    ADDRESS_BOOK, LAB, SEED, snap, decode, districts: Object.fromEntries(Object.entries(GEO.districts).map(([k, v]) => [k, decode(v)])), source: GEO.source
   };
 })();

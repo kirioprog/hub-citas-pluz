@@ -20,6 +20,9 @@
       <p class="muted small">Solicitud ${esc(a.id)} · Factibilidad técnica</p>
       <h1>Hola, ${esc(a.name.split(' ')[0])}</h1>
       <p>${esc(a.address)}, ${a.zone}</p>
+      <div class="mini-map">${H.map.slot('client', { height: '200px', label: 'Ubicación registrada de tu predio', sig: 'c|' + a.id, wheel: false, maxZoom: 16,
+        draw: (c) => { H.map.pin(c, H.map.ll(a.node), icon('pin'), 'pin-place', { tip: 'Tu predio', z: 400 }); } })}</div>
+      <p class="muted small">Ubicación registrada de tu predio. Si no es correcta, avísanos por WhatsApp.</p>
       <div class="visit-box">
         <span class="visit-box-icon">${icon('calendar')}</span>
         <div><p class="small muted">Tu visita</p>

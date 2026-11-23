@@ -41,7 +41,14 @@
     edit: 'M4 20h4L19 9l-4-4L4 16z M14 6l4 4',
     traffic: 'M8 2h8v20H8z M12 6.5v.01 M12 12v.01 M12 17.5v.01',
     layers: 'M12 3 2 8l10 5 10-5z M2 13l10 5 10-5',
-    chart: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2'
+    chart: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',
+    moto: 'M5.5 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18.5 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M5.5 16h6l3-6h2.5 M14 6h3l1.5 10 M8 10h4',
+    right: 'M5 20v-7a4 4 0 0 1 4-4h10 M15 5l4 4-4 4',
+    left: 'M19 20v-7a4 4 0 0 0-4-4H5 M9 5 5 9l4 4',
+    up: 'M12 20V4 M6 10l6-6 6 6',
+    expand: 'M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5',
+    play: 'M7 4v16l13-8z',
+    eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'
   };
   const icon = (n, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${P[n] || P.info}"/></svg>`;
 
@@ -100,5 +107,5 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), tone === 'error' ? 6000 : 4000);
   }
 
-  H.ui = { esc, icon, chip, tag, dateLong, dateShort, dayLabel, stamp, hm, initials, btn, select, field, banner, brand, empty, remainingText, toast, cap, attrs };
+  H.ui = { TONE, esc, icon, chip, tag, dateLong, dateShort, dayLabel, stamp, hm, initials, btn, select, field, banner, brand, empty, remainingText, toast, cap, attrs };
 })();
