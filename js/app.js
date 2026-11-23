@@ -183,6 +183,7 @@
           ${btn('Ingresar', null, { type: 'submit', cls: 'btn-primary btn-block', icon: 'chevron' })}
         </form>` : ''}
         <p class="demo-note">${icon('info')}Selector de rol solo para la demostración</p>
+        <p class="version-note">Versión 2026.11.23-3 · mapa real y rutas sobre calles de OpenStreetMap</p>
         <details class="login-help">
           <summary>¿Qué se puede demostrar?</summary>
           <ol>

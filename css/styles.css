@@ -547,3 +547,4 @@ select.input { padding-right: 32px; }
 .route-controls .cond-set { flex-direction: row; align-items: center; }
 .route-controls .cond-set .check { padding: 4px 12px 4px 8px; border: 1px solid var(--border-strong); border-radius: 999px; background: #fff; }
 .route-controls .cond-set .check:has(input:checked) { border-color: var(--primary); background: var(--primary-50); }
+.version-note { text-align: center; font-size: .75rem; color: var(--faint); margin-top: 6px; }
